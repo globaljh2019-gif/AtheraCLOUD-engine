@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import io
-import xlsxwriter  # 엑셀 생성을 위한 필수 라이브러리
+import xlsxwriter  # 엑셀 생성을 위한 필수 라이브러리 (requirements.txt에 XlsxWriter 추가 필수!)
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -86,7 +86,7 @@ def get_strategy_list(criteria_map):
     return pd.DataFrame(strategy_data)
 
 def get_method_params(method_name):
-    """상세 파라미터 DB(8번)에서 시험법별 세부 정보 추출 (GMP 항목 포함)"""
+    """상세 파라미터 DB(8번)에서 시험법별 세부 정보 추출"""
     if not PARAM_DB_ID: return None
     
     url = f"https://api.notion.com/v1/databases/{PARAM_DB_ID}/query"
