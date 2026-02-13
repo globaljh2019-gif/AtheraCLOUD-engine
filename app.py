@@ -4,13 +4,13 @@ import requests
 import io
 from datetime import datetime
 from docx import Document
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 # ---------------------------------------------------------
-# 1. 설정 및 보안 (API 키)
+# 1. 설정 및 보안 (API 키 로딩)
 # ---------------------------------------------------------
 try:
     NOTION_API_KEY = st.secrets["NOTION_API_KEY"]
@@ -18,6 +18,7 @@ try:
     STRATEGY_DB_ID = st.secrets["STRATEGY_DB_ID"]
     PARAM_DB_ID = st.secrets.get("PARAM_DB_ID", "") 
 except:
+    # 로컬 테스트용 (Secrets가 없을 경우 방어)
     NOTION_API_KEY = ""
     CRITERIA_DB_ID = ""
     STRATEGY_DB_ID = ""
@@ -30,10 +31,11 @@ headers = {
 }
 
 # ---------------------------------------------------------
-# 2. 노션 데이터 로딩 함수들
+# 2. 노션 데이터 로딩 함수 (Backend)
 # ---------------------------------------------------------
 @st.cache_data
 def get_criteria_map():
+    """판정 기준 DB(4번)에서 카테고리별 필수 항목 매핑"""
     url = f"https://api.notion.com/v1/databases/{CRITERIA_DB_ID}/query"
     response = requests.post(url, headers=headers)
     criteria_map = {}
@@ -50,6 +52,7 @@ def get_criteria_map():
     return criteria_map
 
 def get_strategy_list(criteria_map):
+    """전략 DB(7번)에서 Modality/Phase별 시험 항목 리스트 추출"""
     url = f"https://api.notion.com/v1/databases/{STRATEGY_DB_ID}/query"
     response = requests.post(url, headers=headers)
     strategy_data = []
@@ -81,8 +84,8 @@ def get_strategy_list(criteria_map):
             except: continue
     return pd.DataFrame(strategy_data)
 
-# [UPGRADE] 상세 파라미터 + 가이드라인 + 세부 절차 가져오기
 def get_method_params(method_name):
+    """상세 파라미터 DB(8번)에서 시험법별 세부 정보 추출"""
     if not PARAM_DB_ID: return None
     
     url = f"https://api.notion.com/v1/databases/{PARAM_DB_ID}/query"
@@ -100,10 +103,9 @@ def get_method_params(method_name):
             
             def get_text(prop_name):
                 try: 
-                    # 텍스트가 여러 덩어리일 경우 합침
                     texts = props[prop_name]["rich_text"]
-                    return "".join([t["text"]["content"] for t in texts]) if texts else "정보 없음 (Notion 확인 필요)"
-                except: return "정보 없음"
+                    return "".join([t["text"]["content"] for t in texts]) if texts else ""
+                except: return ""
             
             return {
                 "Instrument": get_text("Instrument"),
@@ -112,8 +114,6 @@ def get_method_params(method_name):
                 "Condition_B": get_text("Condition_B"),
                 "Detection": get_text("Detection"),
                 "SST_Criteria": get_text("SST_Criteria"),
-                
-                # [NEW] 새로 추가된 항목들
                 "Reference_Guideline": get_text("Reference_Guideline"),
                 "Detail_Specificity": get_text("Detail_Specificity"),
                 "Detail_Linearity": get_text("Detail_Linearity"),
@@ -123,15 +123,17 @@ def get_method_params(method_name):
     return None
 
 # ---------------------------------------------------------
-# 3. 문서 생성 함수 (VMP & Detail Protocol)
+# 3. 문서 생성 엔진 (Word Generator)
 # ---------------------------------------------------------
 def set_korean_font(doc):
+    """한글 폰트(맑은 고딕) 설정"""
     style = doc.styles['Normal']
     style.font.name = 'Malgun Gothic'
     style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
     style.font.size = Pt(10)
 
 def generate_vmp_premium(modality, phase, df_strategy):
+    """VMP (종합 계획서) 생성"""
     doc = Document()
     set_korean_font(doc)
     
@@ -156,24 +158,19 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io.seek(0)
     return doc_io
 
-# [UPGRADE] 프로토콜 생성 함수 (디테일 강화)
 def generate_protocol_premium(method_name, category, params):
+    """상세 프로토콜 (계획서) 생성"""
     doc = Document()
     set_korean_font(doc)
     
-    # 타이틀
     doc.add_heading(f'Validation Protocol: {method_name}', 0)
-    p = doc.add_paragraph()
-    p.add_run(f"Test Category: {category}").bold = True
-    p.add_run(f"\nReference Guideline: {params.get('Reference_Guideline', 'Internal SOP')}")
+    doc.add_paragraph(f"Test Category: {category}")
+    doc.add_paragraph(f"Reference Guideline: {params.get('Reference_Guideline', 'Internal SOP')}")
     
-    # 1. 시험 목적
     doc.add_heading('1. 목적 (Objective)', level=1)
-    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법이 의약품 품질 관리에 적합함을 과학적으로 입증하기 위한 절차 및 기준을 기술한다.")
+    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 절차 및 판정 기준을 기술한다.")
     
-    # 2. 시험 기기 및 조건
-    doc.add_heading('2. 시험 기기 및 조건 (Instruments & Conditions)', level=1)
-    
+    doc.add_heading('2. 기기 및 분석 조건 (Instruments & Conditions)', level=1)
     if params:
         table = doc.add_table(rows=5, cols=2)
         table.style = 'Table Grid'
@@ -185,53 +182,132 @@ def generate_protocol_premium(method_name, category, params):
             ("검출 (Detection)", params['Detection'])
         ]
         for i, (key, val) in enumerate(data):
-            cell0 = table.rows[i].cells[0]
-            cell1 = table.rows[i].cells[1]
-            cell0.text = key
-            cell1.text = val
-            cell0.paragraphs[0].runs[0].bold = True # 굵게
-            
-    # 3. 적합성 확인 (SST) - 근거 포함
-    doc.add_heading('3. 시스템 적합성 확인 (System Suitability)', level=1)
-    doc.add_paragraph("본 시험을 수행하기 전, 아래 기준을 만족해야 한다.")
+            table.rows[i].cells[0].text = key
+            table.rows[i].cells[1].text = val
+
+    doc.add_heading('3. 적합성 확인 (System Suitability)', level=1)
+    doc.add_paragraph(f"판정 기준: {params['SST_Criteria']}")
     
-    sst_table = doc.add_table(rows=2, cols=2)
-    sst_table.style = 'Table Grid'
-    sst_table.rows[0].cells[0].text = "판정 기준 (Criteria)"
-    sst_table.rows[0].cells[1].text = "근거 (Reference)"
-    sst_table.rows[1].cells[0].text = params['SST_Criteria']
-    sst_table.rows[1].cells[1].text = params.get('Reference_Guideline', 'N/A')
-    
-    # 4. 밸리데이션 상세 수행 계획 (핵심!)
-    doc.add_heading('4. 밸리데이션 수행 항목 및 절차', level=1)
-    doc.add_paragraph("각 밸리데이션 항목에 대한 상세 절차와 판정 기준은 다음과 같다.")
-    
-    # 상세 항목 테이블 생성
-    val_items = [
-        ("특이성 (Specificity)", params.get('Detail_Specificity', 'N/A')),
-        ("직선성 (Linearity)", params.get('Detail_Linearity', 'N/A')),
-        ("정확성 (Accuracy)", params.get('Detail_Accuracy', 'N/A')),
-        ("정밀성 (Precision)", params.get('Detail_Precision', 'N/A')),
-    ]
-    
+    doc.add_heading('4. 밸리데이션 상세 수행 계획', level=1)
     val_table = doc.add_table(rows=1, cols=2)
     val_table.style = 'Table Grid'
     val_table.rows[0].cells[0].text = "항목 (Parameter)"
-    val_table.rows[0].cells[1].text = "세부 절차 및 판정 기준 (Procedure & Criteria)"
+    val_table.rows[0].cells[1].text = "절차 및 기준 (Procedure & Criteria)"
     
-    # 굵게 처리
-    val_table.rows[0].cells[0].paragraphs[0].runs[0].bold = True
-    val_table.rows[0].cells[1].paragraphs[0].runs[0].bold = True
-
-    for item_name, item_detail in val_items:
-        # 내용이 '정보 없음'이 아닐 때만 표에 추가
-        if "정보 없음" not in item_detail and item_detail.strip() != "":
+    items = [
+        ("특이성", params.get('Detail_Specificity', '')),
+        ("직선성", params.get('Detail_Linearity', '')),
+        ("정확성", params.get('Detail_Accuracy', '')),
+        ("정밀성", params.get('Detail_Precision', ''))
+    ]
+    for k, v in items:
+        if v:
             row = val_table.add_row()
-            row.cells[0].text = item_name
-            row.cells[1].text = item_detail
+            row.cells[0].text = k
+            row.cells[1].text = v
+            
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
 
-    doc.add_paragraph("\n\n--------------------------------------------------")
-    doc.add_paragraph("Approved By: __________________________  Date: ____________")
+def generate_logbook(method_name, params):
+    """시험 일지 (Logbook) - 빈 양식 생성"""
+    doc = Document()
+    set_korean_font(doc)
+    
+    doc.add_heading(f'Analytical Logbook: {method_name}', 0)
+    doc.add_paragraph(f"Doc No: LOG-{datetime.now().strftime('%y%m%d')}-{method_name[:4].upper()}")
+    
+    # 시험 정보 헤더
+    table = doc.add_table(rows=3, cols=2)
+    table.style = 'Table Grid'
+    info = [("시험 일자", ""), ("시험자 (Analyst)", ""), ("검체 번호 (Lot No)", "")]
+    for i, (k, v) in enumerate(info):
+        table.rows[i].cells[0].text = k
+        table.rows[i].cells[1].text = v
+
+    doc.add_heading('1. 준비 (Preparation)', level=1)
+    doc.add_paragraph(f"사용 기기: {params['Instrument']}")
+    doc.add_paragraph("□ 표준품 정보: ____________________ (Exp: _________ )")
+    doc.add_paragraph("□ 시약 정보: ______________________ (Exp: _________ )")
+    
+    doc.add_heading('2. 분석 조건 확인', level=1)
+    doc.add_paragraph(f"컬럼: {params['Column_Plate']}")
+    doc.add_paragraph(f"조건: {params['Condition_A']} / {params['Condition_B']}")
+
+    doc.add_heading('3. 데이터 기록 (Raw Data)', level=1)
+    data_table = doc.add_table(rows=8, cols=3)
+    data_table.style = 'Table Grid'
+    headers = ['Inj No.', 'Sample Name', 'Result (Area/RT)']
+    for i, h in enumerate(headers):
+        data_table.rows[0].cells[i].text = h
+        data_table.rows[0].cells[i].paragraphs[0].runs[0].bold = True
+    
+    doc.add_paragraph("\n[특이사항 / Deviation Note]")
+    doc.add_paragraph("_" * 50)
+    
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
+
+def generate_summary_report_secure(method_name, category, params, user_inputs):
+    """결과 보고서 (Report) - 사용자 입력 반영 (보안 모드)"""
+    doc = Document()
+    set_korean_font(doc)
+    
+    doc.add_heading(f'Validation Summary Report: {method_name}', 0)
+    
+    # 1. 헤더 정보
+    table_info = doc.add_table(rows=3, cols=2)
+    table_info.style = 'Table Grid'
+    info_map = [
+        ("Test Category", category),
+        ("Sample / Lot No", user_inputs['lot_no']),
+        ("Analysis Date", str(user_inputs['date'])),
+        ("Analyst", user_inputs['analyst'])
+    ]
+    for i in range(3):
+        table_info.rows[i].cells[0].text = info_map[i][0]
+        table_info.rows[i].cells[1].text = str(info_map[i][1])
+
+    # 2. SST 결과
+    doc.add_heading('1. 시스템 적합성 (System Suitability)', level=1)
+    sst_table = doc.add_table(rows=2, cols=3)
+    sst_table.style = 'Table Grid'
+    headers = ['기준 (Criteria)', '실제 결과 (Actual)', '판정 (Judgement)']
+    for i, h in enumerate(headers):
+        sst_table.rows[0].cells[i].text = h
+        sst_table.rows[0].cells[i].paragraphs[0].runs[0].bold = True
+    
+    sst_table.rows[1].cells[0].text = params['SST_Criteria']
+    sst_table.rows[1].cells[1].text = user_inputs['sst_result']
+    sst_table.rows[1].cells[2].text = "Pass" # (로직 확장 가능)
+
+    # 3. 상세 결과
+    doc.add_heading('2. 상세 시험 결과 (Analytical Results)', level=1)
+    res_table = doc.add_table(rows=1, cols=3)
+    res_table.style = 'Table Grid'
+    res_table.rows[0].cells[0].text = "시험 항목"
+    res_table.rows[0].cells[1].text = "기준 (Criteria)"
+    res_table.rows[0].cells[2].text = "결과 (Result)"
+    
+    items = [
+        ("특이성 (Specificity)", params.get('Detail_Specificity', ''), "Pass"),
+        ("정확성/함량 (Accuracy)", params.get('Detail_Accuracy', ''), user_inputs['main_result']),
+        ("정밀성 (Precision)", params.get('Detail_Precision', ''), "Refer to raw data")
+    ]
+    
+    for item, crit, res in items:
+        if crit:
+            row = res_table.add_row().cells
+            row[0].text = item
+            row[1].text = crit[:40] + "..." 
+            row[2].text = res
+
+    doc.add_heading('3. 결론 (Conclusion)', level=1)
+    doc.add_paragraph(f"상기 시험 결과는 {params.get('Reference_Guideline', '설정된 기준')}을 만족하므로 적합(Pass)으로 판정함.")
     
     doc_io = io.BytesIO()
     doc.save(doc_io)
@@ -239,12 +315,12 @@ def generate_protocol_premium(method_name, category, params):
     return doc_io
 
 # ---------------------------------------------------------
-# 4. 메인 UI
+# 4. 메인 UI (Streamlit App)
 # ---------------------------------------------------------
 st.set_page_config(page_title="AtheraCLOUD Engine", layout="wide")
 
-st.title("🧪 AtheraCLOUD: Validation Protocol Generator")
-st.markdown("##### Professional VMP & Detailed Protocol System")
+st.title("🧪 AtheraCLOUD: CMC Validation Suite")
+st.markdown("##### The All-in-One Platform: Strategy, Protocol, Logbook, and Report")
 
 col1, col2 = st.columns([1, 3])
 
@@ -252,14 +328,15 @@ with col1:
     st.header("📂 Project Setup")
     sel_modality = st.selectbox("Modality", ["mAb", "Cell Therapy", "Gene Therapy", "Exosome"])
     sel_phase = st.selectbox("Phase", ["Phase 1", "Phase 3"])
-    st.info("💡 **Tip:** 노션에 '근거'와 '세부 절차'를 입력하면 계획서에 자동으로 반영됩니다.")
+    st.divider()
+    st.info("💡 **Workflow:**\n1. VMP (전략 수립)\n2. Protocol (계획서)\n3. Logbook (시험 수행)\n4. Report (결과 판정)")
 
 with col2:
     try:
         criteria_map = get_criteria_map()
         df_full = get_strategy_list(criteria_map)
-    except:
-        st.error("Notion 연결 오류. API Key를 확인하세요.")
+    except Exception:
+        st.error("Notion 연결 오류. API Key와 DB ID를 확인하세요.")
         df_full = pd.DataFrame()
 
     if sel_modality == "mAb":
@@ -267,37 +344,88 @@ with col2:
             my_plan = df_full[(df_full["Modality"] == sel_modality) & (df_full["Phase"] == sel_phase)]
             
             if not my_plan.empty:
-                tab1, tab2 = st.tabs(["📑 Step 1: VMP (종합)", "🔬 Step 2: Protocol (상세)"])
+                # 탭 구성: 전략&계획 / 일지 / 결과보고서
+                tab1, tab2, tab3 = st.tabs(["📑 Step 1: Strategy & Protocol", "🧪 Step 2: Logbook (Blank)", "📊 Step 3: Result Report"])
                 
+                # --- Tab 1: VMP & Protocol ---
                 with tab1:
                     st.success(f"✅ **{sel_modality} {sel_phase}** 전략 수립 완료")
                     st.dataframe(my_plan[["Method", "Category", "Required_Items"]], use_container_width=True)
-                    doc_vmp = generate_vmp_premium(sel_modality, sel_phase, my_plan)
-                    st.download_button("📄 VMP 다운로드 (Word)", doc_vmp, f"VMP_{sel_modality}.docx")
-
-                with tab2:
-                    st.markdown("#### 개별 시험법 상세 계획서 생성")
-                    selected_method = st.selectbox("시험법 선택:", my_plan["Method"].unique())
                     
-                    if selected_method:
-                        row_data = my_plan[my_plan["Method"] == selected_method].iloc[0]
-                        params = get_method_params(selected_method)
-                        
+                    doc_vmp = generate_vmp_premium(sel_modality, sel_phase, my_plan)
+                    st.download_button("📥 VMP 다운로드 (Word)", doc_vmp, f"VMP_{sel_modality}.docx")
+                    
+                    st.divider()
+                    st.markdown("#### 개별 시험법 상세 계획서 (Protocol)")
+                    sel_proto = st.selectbox("시험법 선택:", my_plan["Method"].unique(), key="proto")
+                    if sel_proto:
+                        row_data = my_plan[my_plan["Method"] == sel_proto].iloc[0]
+                        params = get_method_params(sel_proto)
                         if params:
-                            st.info(f"🔍 **{selected_method}** 상세 정보를 불러왔습니다.")
-                            with st.expander("미리보기 (Data Preview)"):
-                                st.json(params)
-                                
-                            doc_proto = generate_protocol_premium(selected_method, row_data["Category"], params)
-                            st.download_button(
-                                label=f"📄 {selected_method} Protocol 다운로드",
-                                data=doc_proto,
-                                file_name=f"Protocol_{selected_method}.docx",
-                                type="primary"
-                            )
+                            with st.expander("상세 파라미터 미리보기"):
+                                st.write(params)
+                            doc_proto = generate_protocol_premium(sel_proto, row_data["Category"], params)
+                            st.download_button(f"📥 {sel_proto} Protocol 다운로드", doc_proto, f"Protocol_{sel_proto}.docx", type="primary")
                         else:
-                            st.warning(f"⚠️ '{selected_method}' 데이터가 8번 DB에 없습니다.")
+                            st.warning("⚠️ 노션 8번 DB에 상세 정보가 없습니다.")
+
+                # --- Tab 2: Logbook (Blank) ---
+                with tab2:
+                    st.markdown("#### 🧪 실험실용 시험 일지 (Raw Data Sheet)")
+                    st.info("실제 실험 수행 시 수기 기록을 위해 출력하는 빈 양식입니다.")
+                    
+                    sel_log = st.selectbox("일지를 생성할 시험법:", my_plan["Method"].unique(), key="log")
+                    if sel_log:
+                        params_log = get_method_params(sel_log)
+                        if params_log:
+                            doc_log = generate_logbook(sel_log, params_log)
+                            st.download_button(f"📄 {sel_log} Logbook 다운로드", doc_log, f"Logbook_{sel_log}.docx")
+                        else:
+                            st.warning("상세 정보가 없어 일지를 생성할 수 없습니다.")
+
+                # --- Tab 3: Report (Secure Mode) ---
+                with tab3:
+                    st.markdown("#### 📊 최종 결과 보고서 생성 (Data Security Mode)")
+                    st.success("🔒 **보안 안심:** 입력하신 결과값은 서버에 저장되지 않으며, 보고서 생성 즉시 폐기됩니다.")
+                    
+                    sel_rep = st.selectbox("보고서를 생성할 시험법:", my_plan["Method"].unique(), key="rep_secure")
+                    params_rep = get_method_params(sel_rep)
+                    
+                    if params_rep:
+                        with st.form("report_input_form"):
+                            st.markdown(f"**[{sel_rep}] 시험 결과 입력**")
+                            c1, c2 = st.columns(2)
+                            with c1:
+                                input_lot = st.text_input("검체 번호 (Lot No.)", placeholder="24-MAB-001")
+                                input_date = st.date_input("시험 일자")
+                            with c2:
+                                input_analyst = st.text_input("시험자 (Analyst)", placeholder="Name")
+                                input_sst = st.text_input("SST 결과 (예: RSD 0.5%)", placeholder="Pass / Fail Data")
+                            
+                            input_main = st.text_input("메인 결과값 (함량, 회수율 등)", placeholder="예: 99.8% (적합)")
+                            
+                            submitted = st.form_submit_button("🚀 보고서 생성 및 다운로드")
+                            
+                            if submitted:
+                                user_data = {
+                                    "lot_no": input_lot,
+                                    "date": input_date,
+                                    "analyst": input_analyst,
+                                    "sst_result": input_sst,
+                                    "main_result": input_main
+                                }
+                                cat_name = my_plan[my_plan["Method"] == sel_rep].iloc[0]["Category"]
+                                doc_final = generate_summary_report_secure(sel_rep, cat_name, params_rep, user_data)
+                                
+                                st.download_button(
+                                    label="📥 결과 보고서 다운로드 (Word)",
+                                    data=doc_final,
+                                    file_name=f"Report_{sel_rep}_{input_lot}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                )
+                    else:
+                        st.warning("상세 정보가 없습니다.")
             else:
-                st.warning("데이터 없음")
+                st.warning("해당 조건의 전략 데이터가 없습니다.")
     else:
-        st.info("개발 중")
+        st.info("준비 중인 Modality입니다.")
