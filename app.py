@@ -392,6 +392,12 @@ with col2:
                     params_rep = get_method_params(sel_rep)
                     
                     if params_rep:
+                        # [핵심] 보고서 데이터를 임시 저장할 공간(Session State) 만들기
+                        if "generated_doc" not in st.session_state:
+                            st.session_state.generated_doc = None
+                            st.session_state.generated_name = ""
+
+                        # 1. 입력 폼 (Form)
                         with st.form("report_input_form"):
                             st.markdown(f"**[{sel_rep}] 시험 결과 입력**")
                             c1, c2 = st.columns(2)
@@ -404,7 +410,8 @@ with col2:
                             
                             input_main = st.text_input("메인 결과값 (함량, 회수율 등)", placeholder="예: 99.8% (적합)")
                             
-                            submitted = st.form_submit_button("🚀 보고서 생성 및 다운로드")
+                            # 제출 버튼 (이걸 누르면 문서가 만들어짐)
+                            submitted = st.form_submit_button("🚀 보고서 생성")
                             
                             if submitted:
                                 user_data = {
@@ -415,17 +422,21 @@ with col2:
                                     "main_result": input_main
                                 }
                                 cat_name = my_plan[my_plan["Method"] == sel_rep].iloc[0]["Category"]
-                                doc_final = generate_summary_report_secure(sel_rep, cat_name, params_rep, user_data)
                                 
-                                st.download_button(
-                                    label="📥 결과 보고서 다운로드 (Word)",
-                                    data=doc_final,
-                                    file_name=f"Report_{sel_rep}_{input_lot}.docx",
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                )
+                                # 문서를 만들어서 '주머니(Session State)'에 넣어둠
+                                st.session_state.generated_doc = generate_summary_report_secure(sel_rep, cat_name, params_rep, user_data)
+                                st.session_state.generated_name = f"Report_{sel_rep}_{input_lot}.docx"
+
+                        # 2. 다운로드 버튼 (Form 바깥에 배치!)
+                        # 주머니에 문서가 들어있으면 다운로드 버튼을 보여줌
+                        if st.session_state.generated_doc is not None:
+                            st.divider()
+                            st.info("✅ 보고서 생성이 완료되었습니다.")
+                            st.download_button(
+                                label="📥 결과 보고서 다운로드 (Word)",
+                                data=st.session_state.generated_doc,
+                                file_name=st.session_state.generated_name,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
                     else:
                         st.warning("상세 정보가 없습니다.")
-            else:
-                st.warning("해당 조건의 전략 데이터가 없습니다.")
-    else:
-        st.info("준비 중인 Modality입니다.")
