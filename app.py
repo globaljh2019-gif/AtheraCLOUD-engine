@@ -277,27 +277,49 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
     ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
-    # 3. Specificity Sheet (수정됨: SST 결과값 자동 연동)
+    # 3. Specificity Sheet (수정됨: RT 확인 & Area 간섭 2가지 섹션 분리)
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
-    ws_spec.merge_range('A1:E1', 'Specificity Test', header)
+    ws_spec.merge_range('A1:E1', 'Specificity Test (Identification & Interference)', header)
     
-    # [핵심 수정] Std Mean Area를 사용자가 입력하는게 아니라, '2. SST' 시트의 C9(Area Mean) 셀을 참조하게 변경
-    ws_spec.write('A3', "Std Mean Area (Ref. SST):", sub)
-    ws_spec.write_formula('B3', "='2. SST'!C9", num) # <--- SST 시트의 결과값 자동 로딩
+    # [Reference Data from SST] - SST 결과값 자동 참조
+    ws_spec.write('A3', "Ref. Std RT (min):", sub); ws_spec.write_formula('B3', "='2. SST'!B9", num) # SST Mean RT
+    ws_spec.write('C3', "Ref. Std Area:", sub); ws_spec.write_formula('D3', "='2. SST'!C9", num) # SST Mean Area
     
-    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
+    # -----------------------------------------------------------
+    # Part 1. Identification (RT Match) - 주성분 확인
+    # -----------------------------------------------------------
+    ws_spec.merge_range('A5:E5', "1. Identification (RT Match)", sub_rep)
+    ws_spec.write_row('A6', ["Sample", "RT (min)", "Diff with Std (%)", "Criteria (≤2.0%)", "Result"], sub)
+    
+    # 검체(Sample) 1개 예시
+    ws_spec.write('A7', "Sample", cell)
+    ws_spec.write('B7', "", calc) # 사용자 입력 (검체 RT)
+    
+    # RT 차이(%) = abs(검체RT - 표준RT) / 표준RT * 100
+    ws_spec.write_formula('C7', f"=IF(B7=\"\",\"\",ROUNDDOWN(ABS(B7-$B$3)/$B$3*100, 2))", auto)
+    ws_spec.write('D7', "≤ 2.0%", cell)
+    ws_spec.write_formula('E7', f'=IF(C7=\"\",\"\",IF(C7<=2.0, "Pass", "Fail"))', pass_fmt)
+    ws_spec.conditional_format('E7', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+
+    # -----------------------------------------------------------
+    # Part 2. Interference (Area Check) - 간섭 확인
+    # -----------------------------------------------------------
+    ws_spec.merge_range('A9:E9', "2. Interference (Blank/Placebo Check)", sub_rep)
+    ws_spec.write_row('A10', ["Sample", "Detected RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
+    
     for i, s in enumerate(["Blank", "Placebo"]):
-        row = i + 6
-        ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc) # RT, Area는 사용자 입력
+        row = i + 11
+        ws_spec.write(row, 0, s, cell)
+        ws_spec.write(row, 1, "", calc) # RT 입력 (간섭 피크가 떴을 때)
+        ws_spec.write(row, 2, "", calc) # Area 입력
         
-        # 간섭(%) = (해당 시료 면적 / 표준액 평균 면적) * 100
-        # B3(표준액 평균)가 아직 계산 안 되었을 때(0일 때) 에러 방지(DIV/0!) 로직 추가
-        ws_spec.write_formula(row, 3, f"=IF(OR($B$3=\"\", $B$3=0), \"\", ROUNDDOWN(C{row+1}/$B$3*100, 2))", auto)
+        # 간섭율(%) = (간섭피크 면적 / 표준액 평균 면적) * 100
+        # 분모(D3)가 0이거나 비어있을 때 에러 방지
+        ws_spec.write_formula(row, 3, f"=IF(OR($D$3=\"\",$D$3=0), \"\", IF(C{row+1}=\"\", 0, ROUNDDOWN(C{row+1}/$D$3*100, 2)))", auto)
         
         # 판정: 0.5% 이하 Pass
         ws_spec.write_formula(row, 4, f'=IF(D{row+1}<=0.5, "Pass", "Fail")', pass_fmt)
         ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-
     # 4. Linearity Sheet (Uses Actual Stock Conc)
     target_conc = params.get('Target_Conc')
     if target_conc:
