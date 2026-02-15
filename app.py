@@ -312,14 +312,9 @@ def generate_smart_excel(method_name, category, params):
         for level in [80, 90, 100, 110, 120]:
             ws2.write(row, 0, f"{level}%", cell)
             
-            # [수식 정밀 수정]
-            # 실제 농도 = Actual Stock(B17) * (Level/100) * (Target(B10) / Theo Stock(B12))
-            # 의미: 실제 만들어진 Stock 농도에 희석 비율(Target/TheoStock * Level)을 적용
-            formula_x = f"=ROUNDDOWN({actual_stock_ref} * ({level}/100) * ({target_conc_ref} / {theo_stock_ref}), 3)"
-            
-            # (대안 수식: 만약 사용자가 보정계수만 단순 곱하길 원한다면)
-            # formula_x = f"=ROUNDDOWN({target_conc_ref} * ({level}/100) * {corr_factor_ref}, 3)"
-            # 하지만 위 스크린샷 수식을 살리려면 첫번째 방식이 맞습니다.
+            # [수정] Info 시트 B9(텍스트) -> B10(Target Conc)로 참조 주소 변경
+            # Target(B10) / Theo Stock(B12) 비율을 적용하여 실제 농도 산출
+            formula_x = f"=ROUNDDOWN({actual_stock_ref} * ({level}/100) * ('1. Info'!$B$10 / '1. Info'!$B$12), 3)"
             
             ws2.write_formula(row, 1, formula_x, num3)
             ws2.write(row, 2, "", calc)
@@ -398,10 +393,19 @@ def generate_smart_excel(method_name, category, params):
     # -----------------------------------------------------------
     # 5. Accuracy Sheet
     # -----------------------------------------------------------
-    ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:G', 15)
+    ws_acc = workbook.add_worksheet("5. Accuracy")
+    ws_acc.set_column('A:G', 15)
     ws_acc.merge_range('A1:G1', 'Accuracy Test (Recovery)', header)
-    ws_acc.write('E3', "Slope:", sub); ws_acc.write_formula('F3', "='4. Linearity'!C62", auto) 
-    ws_acc.write('E4', "Int:", sub); ws_acc.write_formula('F4', "='4. Linearity'!C63", auto)
+    
+    # [수정] Linearity 시트의 Summary 결과 위치인 C51(Slope), C52(Intercept)로 주소 변경
+    # 기존 C62, C63은 빈 셀이라 0.00이 나왔습니다.
+    ws_acc.write('E3', "Slope:", sub)
+    ws_acc.write_formula('F3', "='4. Linearity'!C51", auto) 
+    
+    ws_acc.write('E4', "Intercept:", sub)
+    ws_acc.write_formula('F4', "='4. Linearity'!C52", auto)
+    
+    ws_acc.write('G3', "(From Linearity)", cell)
     acc_row = 6
     for level in [80, 100, 120]:
         ws_acc.merge_range(acc_row, 0, acc_row, 6, f"■ Level {level}% (3 Reps)", sub_rep); acc_row += 1
