@@ -694,7 +694,7 @@ with col2:
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
 
-                    # ---------------------------------------------------------
+# ---------------------------------------------------------
 # [New] 엑셀 데이터 파싱 엔진 (결과값 자동 추출)
 # ---------------------------------------------------------
 def extract_logbook_data(uploaded_file):
@@ -755,7 +755,7 @@ def extract_logbook_data(uploaded_file):
     
     return results
 
-    # [Updated] 최종 결과 보고서 생성 (데이터 자동 반영)
+# [Updated] 최종 결과 보고서 생성 (데이터 자동 반영)
 def generate_summary_report_gmp(method_name, category, params, context, test_results=None):
     if test_results is None: test_results = {}
     
@@ -789,7 +789,7 @@ def generate_summary_report_gmp(method_name, category, params, context, test_res
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-    # ... (Step 3: Result Report 탭 내부) ...
+# ... (Step 3: Result Report 탭 내부) ...
             with t3:
                 st.markdown("### 📊 최종 결과 보고서 (Automated)")
                 st.info("작성이 완료된 **엑셀 일지(Logbook)**를 업로드하면, 결과값을 자동으로 읽어와 보고서를 생성합니다.")
