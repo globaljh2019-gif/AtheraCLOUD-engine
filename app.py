@@ -189,13 +189,12 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
     workbook.close(); output.seek(0)
     return output
 
-# [PROTOCOL] - Fixed TypeError
+# [PROTOCOL]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
     doc = Document(); set_korean_font(doc)
     def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
     target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
     section = doc.sections[0]; header = section.header; 
-    # Use positional arguments for stability
     htable = header.add_table(1, 2, Inches(6.0))
     ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
@@ -241,7 +240,6 @@ def generate_smart_excel(method_name, category, params):
     auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # Calc
     pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
-    # Added missing total_fmt
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.0', 'align':'center'})
 
     # 1. Info Sheet
@@ -251,17 +249,22 @@ def generate_smart_excel(method_name, category, params):
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
 
-    # 2. SST Sheet
+    # 2. SST Sheet (Improved Criteria Logic)
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
     for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
+    
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
+    
+    # Specific Tailing Check
     ws_sst.write('A12', "Criteria (RSD):", sub); ws_sst.write('B12', "≤ 2.0%", cell)
-    ws_sst.write('D12', "Result:", sub)
-    ws_sst.write_formula('E12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
-    ws_sst.conditional_format('E12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+    ws_sst.write('C12', "Criteria (Tail):", sub); ws_sst.write('D12', "≤ 2.0 (Inj #1)", cell) 
+    ws_sst.write('E12', "Result:", sub)
+    # Check RSD <= 2.0 AND Tailing of 1st Injection (E3) <= 2.0
+    ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
+    ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
@@ -273,8 +276,9 @@ def generate_smart_excel(method_name, category, params):
         ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
         ws_spec.write_formula(row, 3, f"=IF($B$3=\"\",\"\",ROUNDDOWN(C{row+1}/$B$3*100, 2))", auto)
         ws_spec.write_formula(row, 4, f'=IF(D{row+1}<=0.5, "Pass", "Fail")', pass_fmt)
+        ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
-    # 4. Linearity Sheet (Fixed Indices)
+    # 4. Linearity Sheet
     target_conc = params.get('Target_Conc')
     if target_conc:
         try: target_val_base = float(target_conc)
@@ -315,13 +319,14 @@ def generate_smart_excel(method_name, category, params):
             ws2.write_formula(row, 3, f"=ROUNDDOWN(STDEV(C{r1},C{r2},C{r3}), 2)", auto)
             ws2.write_formula(row, 4, f"=ROUNDDOWN(IF(C{row+1}=0, 0, D{row+1}/C{row+1}*100), 2)", auto)
             ws2.write_formula(row, 5, f'=IF(E{row+1}<=5.0, "Pass", "Fail")', pass_fmt)
-            row += 1
+            ws2.conditional_format(f'F{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt}); row += 1
         row += 1
         slope_cell = f"'4. Linearity'!C{row+1}"; int_cell = f"'4. Linearity'!C{row+2}"
         ws2.write(row, 1, "Slope:", sub); ws2.write_formula(row, 2, f"=ROUNDDOWN(SLOPE(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
         ws2.write(row+1, 1, "Intercept:", sub); ws2.write_formula(row+1, 2, f"=ROUNDDOWN(INTERCEPT(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
         ws2.write(row+2, 1, "R²:", sub); ws2.write_formula(row+2, 2, f"=ROUNDDOWN(RSQ(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
         ws2.write(row+2, 3, "Criteria (≥0.990):", sub); ws2.write_formula(row+2, 4, f'=IF(C{row+3}>=0.990, "Pass", "Fail")', pass_fmt)
+        ws2.conditional_format(f'E{row+3}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 5. Accuracy Sheet
     ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:G', 15)
@@ -361,7 +366,8 @@ def generate_smart_excel(method_name, category, params):
     if params.get('Detail_Robustness'):
         ws4 = workbook.add_worksheet("7. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header)
         ws4.write_row('A3', ["Condition", "Set", "Actual", "SST Result", "Pass/Fail", "Note"], sub)
-        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, calc)
+        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): 
+            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, calc)
 
     # 8. LOD/LOQ
     ws_ll = workbook.add_worksheet("8. LOD_LOQ"); ws_ll.set_column('A:E', 15); ws_ll.merge_range('A1:E1', 'LOD / LOQ', header)
@@ -433,7 +439,7 @@ with col2:
 
             with t2:
                 st.markdown("### 📗 스마트 엑셀 일지 (Final Fixed)")
-                st.info("✅ SST, 직선성, 정확성, 정밀성, 특이성, 완건성, LOD/LOQ + 자동 판정 기능 완벽 구현")
+                st.info("✅ SST(Tailing Check), 특이성(Std 기준), 직선성(회차별 그래프), 정확성(자동 참조) 기능 탑재")
                 sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
