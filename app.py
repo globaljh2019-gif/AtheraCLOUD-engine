@@ -143,21 +143,24 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [PROTOCOL 생성 함수 - 에러 방지 강화]
+# [PROTOCOL 생성 함수 - 에러 수정 완료]
 def generate_protocol_premium(method_name, category, params):
     doc = Document(); set_korean_font(doc)
     
-    # 안전한 값 가져오기 (None 방지)
+    # 안전한 값 가져오기
     def safe_get(key, default=""):
         val = params.get(key)
         return str(val) if val is not None else default
 
-    # 머리글
+    # 머리글 설정 (에러 수정된 부분)
     section = doc.sections[0]; header = section.header
-    htable = header.add_table(rows=1, cols=2); htable.width = Inches(6.0)
+    # 너비 지정을 위한 인자 전달 방식 변경
+    htable = header.add_table(1, 2, Inches(6.0)) 
+    
     ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]
     p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True
     p1.add_run(f"Test Category: {category}")
+    
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True
     p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
@@ -186,7 +189,7 @@ def generate_protocol_premium(method_name, category, params):
     headers = ["항목 (Parameter)", "시험 방법 (Test Procedure)", "판정 기준 (Criteria)"]
     for i, h in enumerate(headers): c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
 
-    # 항목 추가 함수 (안전성 강화)
+    # 항목 추가 함수
     def add_row(param_name, procedure, criteria):
         if criteria and "정보 없음" not in str(criteria):
             r = table.add_row().cells
@@ -214,7 +217,7 @@ def generate_protocol_premium(method_name, category, params):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - 안전성 강화]
+# [Excel 생성 함수 - 5개 탭 & 차트]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     # Formats
