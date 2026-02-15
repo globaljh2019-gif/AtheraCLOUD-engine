@@ -249,25 +249,31 @@ def generate_smart_excel(method_name, category, params):
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     r = 3; 
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
-    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
+    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리(농도 3째자리)에서 절사(ROUNDDOWN).", cell)
     
-    # [농도 보정 섹션 추가]
-    r += 3
+    # [수정 1] Target Conc 위치 고정 (B9 셀)
+    target_conc_val = float(params.get('Target_Conc', 0)) if params.get('Target_Conc') else 0
+    ws1.write(r+2, 0, "Target Conc (100%):", sub); ws1.write(r+2, 1, target_conc_val, calc); ws1.write(r+2, 2, params.get('Unit', 'ppm'), cell)
+    target_conc_ref = "'1. Info'!$B$9"
+
+    # [수정 2] Standard Preparation & Correction Factor 섹션 (Row 11부터 시작)
+    r = 10 
     ws1.merge_range(r, 0, r, 4, "■ Standard Preparation & Correction Factor", sub_rep); r+=1
-    ws1.write(r, 0, "Theoretical Stock (mg/mL):", sub); ws1.write(r, 1, "", calc) # 사용자 입력
-    ws1.write(r+1, 0, "Purity (Potency, %):", sub); ws1.write(r+1, 1, 100.0, calc)
-    ws1.write(r+2, 0, "Water Content (%):", sub); ws1.write(r+2, 1, 0.0, calc)
-    ws1.write(r+3, 0, "Actual Weight (mg):", sub); ws1.write(r+3, 1, "", calc)
-    ws1.write(r+4, 0, "Final Volume (mL):", sub); ws1.write(r+4, 1, "", calc)
+    ws1.write(r, 0, "Theoretical Stock (mg/mL):", sub); ws1.write(r, 1, "", calc) # B12
+    ws1.write(r+1, 0, "Purity (Potency, %):", sub); ws1.write(r+1, 1, 100.0, calc) # B13
+    ws1.write(r+2, 0, "Water Content (%):", sub); ws1.write(r+2, 1, 0.0, calc) # B14
+    ws1.write(r+3, 0, "Actual Weight (mg):", sub); ws1.write(r+3, 1, "", calc) # B15
+    ws1.write(r+4, 0, "Final Volume (mL):", sub); ws1.write(r+4, 1, "", calc) # B16
     
-    # Actual Stock = (Weight * Purity/100 * (100-Water)/100) / Vol
+    # Actual Stock Conc Calculation (B17)
     ws1.write(r+5, 0, "Actual Stock (mg/mL):", sub)
     ws1.write_formula(r+5, 1, f'=IF(B{r+5}="","",ROUNDDOWN((B{r+4}*(B{r+2}/100)*((100-B{r+3})/100))/B{r+5}, 4))', auto)
     
-    # Correction Factor = Actual / Theoretical
+    # Correction Factor Calculation (B18)
     ws1.write(r+6, 0, "Correction Factor:", sub)
     ws1.write_formula(r+6, 1, f'=IF(OR(B{r+1}="", B{r+1}=0, B{r+6}=""), 1, ROUNDDOWN(B{r+6}/B{r+1}, 4))', total_fmt)
     
+    corr_factor_ref = "'1. Info'!$B$18" # 보정계수 참조 위치
     # 참조용 이름 정의 (Correction Factor)
     corr_factor_ref = "'1. Info'!$B$14" # 14행(r+6) 참조
 
