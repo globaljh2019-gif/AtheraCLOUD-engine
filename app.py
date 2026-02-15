@@ -138,57 +138,54 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [NEW] 통합 시약 제조 레시피 (Master Recipe Excel) - 세트별 분리 버전 (Section Total 포함)
+# [NEW] Master Recipe Excel (시료타입 반영 & 가독성 개선)
 def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req_vol, sample_type, powder_info=""):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
     # Formats
     title_fmt = workbook.add_format({'bold':True, 'font_size': 14, 'align':'center', 'valign':'vcenter', 'bg_color': '#44546A', 'font_color': 'white'})
-    header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
-    section_title = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC000', 'font_size':11, 'align':'left'}) 
+    header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'}) # Main Section
+    section_title = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC000', 'font_size':11, 'align':'left'}) # Sub Section (1회차 등)
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#EDEDED', 'align':'center'})
     cell = workbook.add_format({'border':1, 'align':'center'})
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
-    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.000', 'align':'center'}) # Green for Calculated
-    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.000', 'align':'center'}) # Yellow for Total
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.000', 'align':'center'}) # Green for Result
+    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
 
     ws = workbook.add_worksheet("Master Recipe")
     ws.set_column('A:A', 30); ws.set_column('B:E', 15); ws.set_column('F:F', 12)
     
-    # 1. 상단 요약 (Dashboard)
+    # 1. Dashboard
     ws.merge_range('A1:F1', f'Validation Material Planner: {method_name}', title_fmt)
-    
     ws.write('A3', "Sample Type:", sub); ws.write('B3', sample_type, cell)
-    if sample_type == "Powder":
-        ws.write('C3', "Prep Detail:", sub); ws.write_string('D3', powder_info, cell) # Powder weighing details
+    if sample_type == "Powder (파우더)":
+        ws.write('C3', "Prep Detail:", sub); ws.write_string('D3', powder_info, cell)
     
     ws.write('A4', "Stock Conc:", sub); ws.write('B4', stock_conc, num); ws.write('C4', unit, cell)
     ws.write('A5', "Target (100%):", sub); ws.write('B5', target_conc, num); ws.write('C5', unit, cell)
-    ws.write('A6', "Vol per Prep (mL):", sub); ws.write('B6', req_vol, num)
+    ws.write('A6', "Target Vol/Vial (mL):", sub); ws.write('B6', req_vol, num) # 명칭 변경 반영
 
-    # Total Stock Calculation Logic (Formula placeholder)
     ws.write('D6', "TOTAL STOCK NEEDED (mL):", sub)
-    # We will sum column C later (dynamic formula)
+    # Total formula placeholder at E6
     
     row = 8
     
-    # --- Helper to write grouped sets ---
+    # Helper for grouped sections
     def add_section_grouped(main_title, levels, reps):
         nonlocal row
-        ws.merge_range(row, 0, row, 5, f"■ {main_title}", header) # Big Header
+        ws.merge_range(row, 0, row, 5, f"■ {main_title}", header)
         row += 1
         
         section_start_row = row
         
         for rep in range(1, reps + 1):
-            # Set Header (ex: 1회차, 2회차)
-            set_title = f"{main_title.split(' ')[0]} - {rep}회차 조제 (Repetition {rep})"
+            set_title = f"{main_title.split(' ')[0]} - {rep}회차 조제 (Set {rep})"
             ws.merge_range(row, 0, row, 5, set_title, section_title)
             row += 1
-            ws.write_row(row, 0, ["Item / Vial ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
+            ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
             row += 1
             
-            data_start_row = row
+            data_start = row
             for level in levels:
                 t_val = float(target_conc) * (level / 100)
                 s_vol = (t_val * float(req_vol)) / float(stock_conc)
@@ -204,86 +201,45 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
                 ws.write(row, 5, "□", cell)
                 row += 1
             
-            # Set Sub-total (This Rep only)
-            ws.write(row, 1, f"[{rep}회차] 필요 Stock:", sub)
-            ws.write_formula(row, 2, f"=SUM(C{data_start_row+1}:C{row})", total_fmt)
-            row += 2 # Gap between sets
+            ws.write(row, 1, f"[{rep}회차] 소요 Stock:", sub)
+            ws.write_formula(row, 2, f"=SUM(C{data_start+1}:C{row})", total_fmt)
+            row += 2 
 
-    # 1. System Suitability (SST) - usually 100% level, 1 Group
+    # Generate Sections
     add_section_grouped("1. 시스템 적합성 (SST)", [100], 6)
-
-    # 2. Specificity (100% Level usually)
     add_section_grouped("2. 특이성 (Specificity)", [100], 1)
-
-    # 3. Linearity (5 levels x 3 reps) -> 3 Distinct Groups
     add_section_grouped("3. 직선성 (Linearity)", [80, 90, 100, 110, 120], 3)
-
-    # 4. Accuracy (3 levels x 3 reps) -> 3 Distinct Groups
     add_section_grouped("4. 정확성 (Accuracy)", [80, 100, 120], 3)
-
-    # 5. Repeatability (Precision) (100% x 6 reps) -> Treated as 1 big group or 6 individuals
-    # Here we treat as 1 Group with 6 items
-    # But function expects reps of levels. So levels=[100]*6, reps=1 approach or levels=[100], reps=6.
-    # Let's use levels=[100], reps=1 but actually we want 6 vials in one block.
-    # To use the helper effectively: 
-    ws.merge_range(row, 0, row, 5, "■ 5. 정밀성 (Repeatability) - 6회 반복 조제", header)
+    
+    # Precision (Single Block)
+    ws.merge_range(row, 0, row, 5, "■ 5. 정밀성 (Repeatability)", header)
     row += 2
     ws.merge_range(row, 0, row, 5, "반복성 시험 세트 (n=6)", section_title)
     row += 1
-    ws.write_row(row, 0, ["Item / Vial ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
+    ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
     row += 1
     p_start = row
     for i in range(1, 7):
         t_val = float(target_conc)
         s_vol = (t_val * float(req_vol)) / float(stock_conc)
         d_vol = float(req_vol) - s_vol
-        ws.write(row, 0, f"Prec-100%-{i}", cell)
-        ws.write(row, 1, t_val, num)
-        ws.write(row, 2, s_vol, auto)
-        ws.write(row, 3, d_vol, auto)
-        ws.write(row, 4, float(req_vol), num)
-        ws.write(row, 5, "□", cell)
+        ws.write(row, 0, f"Prec-100%-{i}", cell); ws.write(row, 1, t_val, num)
+        ws.write(row, 2, s_vol, auto); ws.write(row, 3, d_vol, auto); ws.write(row, 4, float(req_vol), num); ws.write(row, 5, "□", cell)
         row += 1
-    ws.write(row, 1, "[정밀성] 필요 Stock:", sub)
-    ws.write_formula(row, 2, f"=SUM(C{p_start+1}:C{row})", total_fmt)
+    ws.write(row, 1, "[정밀성] 소요 Stock:", sub); ws.write_formula(row, 2, f"=SUM(C{p_start+1}:C{row})", total_fmt)
     row += 2
 
-    # 6. Intermediate Precision (same as above)
-    ws.merge_range(row, 0, row, 5, "■ 6. 실험실내 정밀성 (Intermediate Precision)", header)
-    row += 2
-    ws.merge_range(row, 0, row, 5, "Day 2 / Analyst 2 세트 (n=6)", section_title)
-    row += 1
-    ws.write_row(row, 0, ["Item / Vial ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
-    row += 1
-    ip_start = row
-    for i in range(1, 7):
-        t_val = float(target_conc)
-        s_vol = (t_val * float(req_vol)) / float(stock_conc)
-        d_vol = float(req_vol) - s_vol
-        ws.write(row, 0, f"IntPrec-100%-{i}", cell)
-        ws.write(row, 1, t_val, num)
-        ws.write(row, 2, s_vol, auto)
-        ws.write(row, 3, d_vol, auto)
-        ws.write(row, 4, float(req_vol), num)
-        ws.write(row, 5, "□", cell)
-        row += 1
-    ws.write(row, 1, "[실험실내] 필요 Stock:", sub)
-    ws.write_formula(row, 2, f"=SUM(C{ip_start+1}:C{row})", total_fmt)
-    row += 2
-
-    # 7. Robustness (100% x 6 reps roughly)
+    # Robustness & LOD/LOQ
     add_section_grouped("7. 완건성 (Robustness)", [100], 6)
-    
-    # 8. LOD/LOQ
-    add_section_grouped("8. LOD/LOQ (Detection Limit)", [1, 0.5], 3)
+    add_section_grouped("8. LOD/LOQ", [1, 0.5], 3)
 
-    # Final Total Formula
+    # Grand Total
     ws.write_formula('E6', f"=SUM(C9:C{row})", workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FF0000', 'font_color':'white', 'num_format':'0.00', 'align':'center'}))
 
     workbook.close(); output.seek(0)
     return output
 
-# [PROTOCOL 생성 함수 - 기존 유지]
+# [PROTOCOL 생성 함수]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None):
     doc = Document(); set_korean_font(doc)
     def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
@@ -303,9 +259,12 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     items = [("특이성", safe_get('Detail_Specificity')), ("직선성", safe_get('Detail_Linearity')), ("범위", safe_get('Detail_Range')), ("정확성", safe_get('Detail_Accuracy')), ("정밀성", safe_get('Detail_Precision')), ("완건성", safe_get('Detail_Robustness'))]
     for k, v in items:
         if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text=k; r[1].text=v
+    
+    # 5. Procedures
     doc.add_heading('5. 상세 시험 방법 (Procedures)', level=1)
     target_conc = safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
     doc.add_heading('5.1 용액 조제', level=2); doc.add_paragraph(f"1) 표준 모액: 농도 {stock_conc if stock_conc else '[입력필요]'} {unit} 용액을 준비한다.")
+    
     doc.add_heading('5.2 직선성', level=2); doc.add_paragraph(f"기준 농도 {target_conc} {unit}를 중심으로 80 ~ 120% 범위 내 5개 농도를 조제한다.")
     if stock_conc and req_vol:
         t_lin = doc.add_table(rows=1, cols=4); t_lin.style = 'Table Grid'
@@ -313,6 +272,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
         for level in [80, 90, 100, 110, 120]:
             t_val = float(target_conc) * (level/100); s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
             r = t_lin.add_row().cells; r[0].text=f"{level}%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
+    
     doc.add_heading('5.3 정확성', level=2); doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 각 3회씩 독립적으로 조제한다.")
     doc.add_paragraph("\n\n"); table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
     for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
@@ -417,22 +377,38 @@ with col2:
                     sel_p = st.selectbox("Protocol:", my_plan["Method"].unique())
                     
                     if sel_p:
-                        st.info("👇 Stock 농도를 입력하면, 3회 반복 및 항목별(직선성/정확성/정밀성) 시약 제조표가 생성됩니다.")
+                        # [NEW] 시료 타입 선택 (도메인 복구)
+                        st.info("👇 시료 상태(액체/파우더)를 선택하고 정보를 입력하세요.")
+                        
+                        sample_type = st.radio("시료 타입 (Sample Type):", ["Liquid (액체)", "Powder (파우더)"], horizontal=True)
+                        
                         cc1, cc2 = st.columns(2)
-                        with cc1: stock_input = st.number_input("내 Stock 농도 (mg/mL 등):", min_value=0.0, step=0.1, format="%.2f")
-                        with cc2: vol_input = st.number_input("1회당 조제량 (mL):", min_value=1.0, value=5.0, step=1.0)
+                        stock_input_val = 0.0
+                        powder_desc = ""
+                        
+                        if sample_type == "Liquid (액체)":
+                            with cc1: stock_input_val = st.number_input("Stock 농도 (mg/mL 등):", min_value=0.0, step=0.1, format="%.2f")
+                        else: # Powder
+                            with cc1: weight_input = st.number_input("칭량값 (Weight, mg):", min_value=0.0, step=0.1)
+                            with cc2: dil_vol_input = st.number_input("희석 부피 (Vol, mL):", min_value=0.1, value=10.0, step=1.0)
+                            if dil_vol_input > 0:
+                                stock_input_val = weight_input / dil_vol_input
+                                st.caption(f"🧪 계산된 Stock 농도: **{stock_input_val:.2f} mg/mL**")
+                                powder_desc = f"Weigh {weight_input}mg / {dil_vol_input}mL"
+
+                        # [NEW] 명칭 변경: 1회당 조제량 -> 개별 바이알 조제 목표량
+                        with cc2: vol_input = st.number_input("개별 바이알 조제 목표량 (Target Vol, mL):", min_value=1.0, value=5.0, step=1.0, help="부피 플라스크 크기(예: 5mL, 10mL)를 입력하세요.")
                         
                         params_p = get_method_params(sel_p)
                         target_conc_val = params_p.get('Target_Conc', 0)
                         unit_val = params_p.get('Unit', '')
 
-                        # 다운로드 버튼 1: 별도 계산기 파일 (Master Recipe)
-                        if stock_input > 0:
-                            calc_excel = generate_master_recipe_excel(sel_p, target_conc_val, unit_val, stock_input, vol_input, "Liquid", "")
+                        # 다운로드 버튼
+                        if stock_input_val > 0:
+                            calc_excel = generate_master_recipe_excel(sel_p, target_conc_val, unit_val, stock_input_val, vol_input, sample_type, powder_desc)
                             st.download_button("🧮 시약 제조 계산기 (Master Recipe) 다운로드", calc_excel, f"Master_Recipe_{sel_p}.xlsx")
                         
-                        # 다운로드 버튼 2: 상세 계획서 (워드)
-                        doc_proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_input if stock_input > 0 else None, vol_input)
+                        doc_proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_input_val if stock_input_val > 0 else None, vol_input)
                         st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
