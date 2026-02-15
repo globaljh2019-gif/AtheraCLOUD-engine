@@ -510,7 +510,7 @@ with col2:
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
                     st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
-           with t3:
+            with t3:
                 st.markdown("### 📊 최종 결과 보고서 (Automated)")
                 st.info("작성이 완료된 **엑셀 일지(Logbook)**를 업로드하면, 결과값을 자동으로 읽어와 보고서를 생성합니다.")
                 
