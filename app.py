@@ -250,6 +250,26 @@ def generate_smart_excel(method_name, category, params):
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
 
+    # [농도 보정 섹션 추가]
+    r += 3
+    ws1.merge_range(r, 0, r, 4, "■ Standard Preparation & Correction Factor", sub_rep); r+=1
+    ws1.write(r, 0, "Theoretical Stock (mg/mL):", sub); ws1.write(r, 1, "", calc) # 사용자 입력
+    ws1.write(r+1, 0, "Purity (Potency, %):", sub); ws1.write(r+1, 1, 100.0, calc)
+    ws1.write(r+2, 0, "Water Content (%):", sub); ws1.write(r+2, 1, 0.0, calc)
+    ws1.write(r+3, 0, "Actual Weight (mg):", sub); ws1.write(r+3, 1, "", calc)
+    ws1.write(r+4, 0, "Final Volume (mL):", sub); ws1.write(r+4, 1, "", calc)
+    
+    # Actual Stock = (Weight * Purity/100 * (100-Water)/100) / Vol
+    ws1.write(r+5, 0, "Actual Stock (mg/mL):", sub)
+    ws1.write_formula(r+5, 1, f'=IF(B{r+5}="","",ROUNDDOWN((B{r+4}*(B{r+2}/100)*((100-B{r+3})/100))/B{r+5}, 4))', auto)
+    
+    # Correction Factor = Actual / Theoretical
+    ws1.write(r+6, 0, "Correction Factor:", sub)
+    ws1.write_formula(r+6, 1, f'=IF(OR(B{r+1}="", B{r+1}=0, B{r+6}=""), 1, ROUNDDOWN(B{r+6}/B{r+1}, 4))', total_fmt)
+    
+    # 참조용 이름 정의 (Correction Factor)
+    corr_factor_ref = "'1. Info'!$B$14" # 14행(r+6) 참조
+
     # 2. SST Sheet (System Suitability)
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
@@ -272,23 +292,18 @@ def generate_smart_excel(method_name, category, params):
     # 3. Specificity Sheet (보완됨)
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test', header)
+    ws_spec.write('A3', "Std Mean Area (from SST):", sub); ws_spec.write_formula('B3', "='2. SST'!C9", num)
     
-    # 표준액 평균 면적 자동 로딩
-    ws_spec.write('A3', "Std Mean Area (from SST):", sub)
-    ws_spec.write_formula('B3', "='2. SST'!C9", num) # SST 시트 값 참조
-    
-    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result"], sub)
+    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
     for i, s in enumerate(["Blank", "Placebo"]):
         row = i + 6
         ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
-        
-        # 간섭율 계산: (검체면적 / 표준액면적 * 100), 값이 없으면 빈칸
         ws_spec.write_formula(row, 3, f'=IF(OR(C{row+1}="", $B$3=""), "", ROUNDDOWN(C{row+1}/$B$3*100, 2))', auto)
-        
-        # 판정: 0.5% 이하 Pass
         ws_spec.write_formula(row, 4, f'=IF(D{row+1}="", "", IF(D{row+1}<=0.5, "Pass", "Fail"))', pass_fmt)
         ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
+    ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
+    ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")
     # [기준 명시] 하단 추가
     ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
     ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")
