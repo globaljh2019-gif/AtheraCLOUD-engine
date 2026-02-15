@@ -510,15 +510,42 @@ with col2:
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
                     st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
-            with t3:
-                st.markdown("### 📊 최종 결과 보고서")
-                sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
-                with st.form("rep"):
-                    l = st.text_input("Lot"); d = st.text_input("Date"); a = st.text_input("Analyst")
-                    s = st.text_input("SST"); m = st.text_input("Main Result")
-                    if st.form_submit_button("Generate Report"):
-                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
-                        st.download_button("📥 Report", doc, "Report.docx")
+           with t3:
+                st.markdown("### 📊 최종 결과 보고서 (Automated)")
+                st.info("작성이 완료된 **엑셀 일지(Logbook)**를 업로드하면, 결과값을 자동으로 읽어와 보고서를 생성합니다.")
+                
+                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
+                
+                # [New] 파일 업로더 추가
+                uploaded_log = st.file_uploader("📂 작성된 엑셀 일지 업로드 (Upload Filled Logbook)", type=["xlsx"])
+                
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    lot_no = st.text_input("Lot No.:", value="TBD")
+                
+                if uploaded_log:
+                    st.success("✅ 파일이 인식되었습니다. 데이터를 추출합니다...")
+                    # 1. 데이터 추출
+                    extracted_data = extract_logbook_data(uploaded_log)
+                    
+                    # 2. 추출된 데이터 미리보기 (디버깅용)
+                    with st.expander("🔍 추출된 결과 데이터 확인 (Preview)"):
+                        st.json(extracted_data)
+                    
+                    # 3. 보고서 생성 버튼
+                    if st.button("📥 결과가 반영된 최종 보고서 다운로드"):
+                        param_data = get_method_params(sel_r)
+                        # 추출된 데이터를 함수에 전달
+                        doc_report = generate_summary_report_gmp(sel_r, "Category", param_data, {'lot_no': lot_no}, extracted_data)
+                        
+                        st.download_button(
+                            label="📄 Final Report (Docx) 다운로드",
+                            data=doc_report,
+                            file_name=f"Final_VR_{sel_r}_{lot_no}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                else:
+                    st.warning("⚠️ 먼저 엑셀 일지를 업로드해주세요.")
 
 # ---------------------------------------------------------
 # 4. 상세 계획서 생성 (보완된 SOP 기술)
