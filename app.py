@@ -252,7 +252,6 @@ def generate_smart_excel(method_name, category, params):
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
     ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     
-    # Basic Info
     info_rows = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     for i, (k, v) in enumerate(info_rows):
         ws1.write(i+3, 0, k, sub); ws1.merge_range(i+3, 1, i+3, 4, v if v else "", cell)
@@ -582,81 +581,81 @@ st.set_page_config(page_title="AtheraCLOUD Full GMP", layout="wide")
 st.title("🧪 AtheraCLOUD: Full CMC Validation Suite")
 st.markdown("##### Strategy · Protocol · Multi-Sheet Logbook · Report")
 
-if __name__ == "__main__":
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        st.header("📂 Project")
-        sel_modality = st.selectbox("Modality", ["mAb", "Cell Therapy"])
-        sel_phase = st.selectbox("Phase", ["Phase 1", "Phase 3"])
+col1, col2 = st.columns([1, 3])
+with col1:
+    st.header("📂 Project")
+    sel_modality = st.selectbox("Modality", ["mAb", "Cell Therapy"])
+    sel_phase = st.selectbox("Phase", ["Phase 1", "Phase 3"])
 
-    with col2:
-        try: criteria_map = get_criteria_map(); df_full = get_strategy_list(criteria_map)
-        except: df_full = pd.DataFrame()
+with col2:
+    try: criteria_map = get_criteria_map(); df_full = get_strategy_list(criteria_map)
+    except: df_full = pd.DataFrame()
 
-        if not df_full.empty:
-            my_plan = df_full[(df_full["Modality"] == sel_modality) & (df_full["Phase"] == sel_phase)]
-            if not my_plan.empty:
-                t1, t2, t3 = st.tabs(["📑 Step 1: Strategy", "📗 Step 2: Logbook", "📊 Step 3: Report"])
+    if not df_full.empty:
+        my_plan = df_full[(df_full["Modality"] == sel_modality) & (df_full["Phase"] == sel_phase)]
+        if not my_plan.empty:
+            t1, t2, t3 = st.tabs(["📑 Step 1: Strategy", "📗 Step 2: Logbook", "📊 Step 3: Report"])
+            
+            with t1:
+                st.markdown("### 1️⃣ 전략 및 계획서")
+                st.dataframe(my_plan[["Method", "Category"]])
+                sel_p = st.selectbox("Select Protocol:", my_plan["Method"].unique())
+                if sel_p:
+                    c1, c2 = st.columns(2)
+                    with c1: stock_in = st.number_input("내 Stock 농도:", min_value=0.0, value=1.0)
+                    with c2: vol_in = st.number_input("목표 조제량(mL):", min_value=1.0, value=10.0)
+                    if st.button("Generate Protocol Package"):
+                        params_p = get_method_params(sel_p)
+                        target_in = float(params_p.get('Target_Conc', 1.0))
+                        
+                        recipe = generate_master_recipe_excel(sel_p, target_in, "mg/mL", stock_in, vol_in, "Liquid")
+                        st.download_button("📥 Master Recipe (Excel)", recipe, f"Recipe_{sel_p}.xlsx")
+                        
+                        proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_in, vol_in, target_in)
+                        st.download_button("📥 Protocol (Docx)", proto, f"Protocol_{sel_p}.docx")
+
+            with t2:
+                st.markdown("### 📗 스마트 엑셀 일지 (GMP)")
+                st.info("실험 데이터를 입력할 엑셀 일지를 생성합니다. (테스트용 자동 채우기 가능)")
+                sel_l = st.selectbox("Select Logbook:", my_plan["Method"].unique(), key="l")
                 
-                with t1:
-                    st.markdown("### 1️⃣ 전략 및 계획서")
-                    st.dataframe(my_plan[["Method", "Category"]])
-                    sel_p = st.selectbox("Select Protocol:", my_plan["Method"].unique())
-                    if sel_p:
-                        c1, c2 = st.columns(2)
-                        with c1: stock_in = st.number_input("내 Stock 농도:", min_value=0.0, value=1.0)
-                        with c2: vol_in = st.number_input("목표 조제량(mL):", min_value=1.0, value=10.0)
-                        if st.button("Generate Protocol Package"):
-                            params_p = get_method_params(sel_p)
-                            target_in = float(params_p.get('Target_Conc', 1.0))
-                            
-                            recipe = generate_master_recipe_excel(sel_p, target_in, "mg/mL", stock_in, vol_in, "Liquid")
-                            st.download_button("📥 Master Recipe (Excel)", recipe, f"Recipe_{sel_p}.xlsx")
-                            
-                            proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_in, vol_in, target_in)
-                            st.download_button("📥 Protocol (Docx)", proto, f"Protocol_{sel_p}.docx")
+                # [New] Simulation Checkbox
+                simulate_mode = st.checkbox("🧪 시뮬레이션 데이터 포함 (Test Mode: Auto-fill Data)", value=False, help="체크하면 가상의 결과값이 채워진 엑셀이 생성되어 즉시 보고서를 만들 수 있습니다.")
+                
+                if st.button("Generate Excel Logbook"):
+                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l), simulate=simulate_mode)
+                    
+                    # Session Storage for Step 3
+                    st.session_state['generated_logbook'] = data
+                    st.session_state['generated_log_name'] = sel_l
+                    st.success(f"Logbook Generated! ({'Simulated Data Included' if simulate_mode else 'Blank Template'})")
+                    st.download_button("📥 Download Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
 
-                with t2:
-                    st.markdown("### 📗 스마트 엑셀 일지 (GMP)")
-                    st.info("실험 데이터를 입력할 엑셀 일지를 생성합니다. (테스트용 자동 채우기 가능)")
-                    sel_l = st.selectbox("Select Logbook:", my_plan["Method"].unique(), key="l")
+            with t3:
+                st.markdown("### 📊 최종 결과 보고서 (Automated)")
+                st.info("작성 완료된 엑셀 일지를 업로드하면 결과가 자동 반영됩니다.")
+                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
+                uploaded_log = st.file_uploader("📂 Upload Filled Logbook (xlsx)", type=["xlsx"])
+                
+                # Automatic Session Retrieval
+                used_log = None
+                if uploaded_log:
+                    used_log = uploaded_log
+                elif 'generated_logbook' in st.session_state and st.session_state['generated_log_name'] == sel_r:
+                    st.info(f"💡 Step 2에서 생성된 '{sel_r}' 일지 데이터를 자동으로 사용합니다.")
+                    used_log = st.session_state['generated_logbook']
+
+                lot_no = st.text_input("Lot No:", value="TBD")
+                
+                if used_log:
+                    st.success("Data Ready for Report!")
+                    extracted_data = extract_logbook_data(used_log)
                     
-                    # Simulation Checkbox
-                    simulate_mode = st.checkbox("🧪 시뮬레이션 데이터 포함 (Test Mode: Auto-fill Data)", value=False, help="체크하면 가상의 결과값이 채워진 엑셀이 생성되어 즉시 보고서를 만들 수 있습니다.")
-                    
-                    if st.button("Generate Excel Logbook"):
-                        data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l), simulate=simulate_mode)
+                    with st.expander("🔍 Extracted Data Preview"):
+                        st.json(extracted_data)
                         
-                        # Save to Session State for Step 3
-                        st.session_state['generated_logbook'] = data
-                        st.session_state['generated_log_name'] = sel_l
-                        st.success(f"Logbook Generated! ({'Simulated Data Included' if simulate_mode else 'Blank Template'})")
-                        st.download_button("📥 Download Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
-
-                with t3:
-                    st.markdown("### 📊 최종 결과 보고서 (Automated)")
-                    sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
-                    uploaded_log = st.file_uploader("📂 Upload Filled Logbook (xlsx)", type=["xlsx"])
-                    
-                    # Automatic Session Retrieval
-                    used_log = None
-                    if uploaded_log:
-                        used_log = uploaded_log
-                    elif 'generated_logbook' in st.session_state and st.session_state['generated_log_name'] == sel_r:
-                        st.info(f"💡 Step 2에서 생성된 '{sel_r}' 일지 데이터를 자동으로 사용합니다.")
-                        used_log = st.session_state['generated_logbook']
-
-                    lot_no = st.text_input("Lot No:", value="TBD")
-                    
-                    if used_log:
-                        st.success("Data Ready for Report!")
-                        extracted_data = extract_logbook_data(used_log)
-                        
-                        with st.expander("🔍 Extracted Data Preview"):
-                            st.json(extracted_data)
-                            
-                        if st.button("Generate Final Report"):
-                            doc_r = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no': lot_no}, extracted_data)
-                            st.download_button("📥 Download Report (Docx)", doc_r, f"Final_Report_{sel_r}.docx")
-                    else:
-                        st.warning("⚠️ 엑셀 일지를 업로드하거나 Step 2에서 생성해주세요.")
+                    if st.button("Generate Final Report"):
+                        doc_r = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no': lot_no}, extracted_data)
+                        st.download_button("📥 Download Report (Docx)", doc_r, f"Final_Report_{sel_r}.docx")
+                else:
+                    st.warning("⚠️ 엑셀 일지를 업로드하거나 Step 2에서 생성해주세요.")
