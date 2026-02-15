@@ -326,11 +326,14 @@ def generate_smart_excel(method_name, category, params):
             ws2.write_row(row, 0, ["Level", "Conc (X)", "Area (Y)", "Back Calc", "Accuracy (%)", "Check"], sub); row += 1
             data_start = row
             for level in [80, 90, 100, 110, 120]:
-                target_val = target_val_base * (level / 100)
                 ws2.write(row, 0, f"{level}%", cell)
-                # [중요] 농도(X) = 이론농도 * 보정계수
-                ws2.write_formula(row, 1, f"=ROUNDDOWN({target_val} * {corr_factor_ref}, 3)", num3)
-                ws2.write(row, 2, "", calc)
+               # [수정된 핵심 수식] 
+                # 실제농도(X) = (Info시트 실제스탁농도 B17) * (현재 레벨 80~120 / 100) * (기준농도 B9 / 이론스탁농도 B12)
+                # 즉, 실제 만들어진 스탁 농도에서 이론적인 희석 비율을 적용한 '진짜 농도'를 구함
+                formula_x = f"=ROUNDDOWN('1. Info'!$B$17 * ({level}/100) * ('1. Info'!$B$9 / '1. Info'!$B$12), 3)"
+                ws2.write_formula(row, 1, formula_x, num3)
+                
+                ws2.write(row, 2, "", calc) # Area 입력칸
                 rep_rows[rep].append(row + 1)
                 
                 ind_slope = f"C{data_start+7}"; ind_int = f"C{data_start+8}"
