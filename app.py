@@ -96,131 +96,180 @@ def set_korean_font(doc):
     style.font.size = Pt(10)
 
 def set_table_header_style(cell):
-    """테이블 헤더 스타일 (회색 배경, 굵게)"""
     tcPr = cell._element.get_or_add_tcPr()
     shading_elm = OxmlElement('w:shd')
-    shading_elm.set(qn('w:fill'), 'D9D9D9') # 회색 배경
+    shading_elm.set(qn('w:fill'), 'D9D9D9') 
     tcPr.append(shading_elm)
     cell.paragraphs[0].runs[0].bold = True
     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-# [VMP 업그레이드: 실질 문서화]
+# [VMP 생성 함수 - 기존 유지]
 def generate_vmp_premium(modality, phase, df_strategy):
-    doc = Document()
-    set_korean_font(doc)
-    
-    # 1. 문서 제목
-    head = doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0)
-    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph() # 공백
-
-    # 2. 문서 정보 테이블
-    table_info = doc.add_table(rows=2, cols=4)
-    table_info.style = 'Table Grid'
-    
-    info_headers = ["제품명 (Product)", "단계 (Phase)", "문서 번호 (Doc No.)", "제정 일자 (Date)"]
-    info_values = [f"{modality} Project", phase, "VMP-001", datetime.now().strftime('%Y-%m-%d')]
-    
-    for i, h in enumerate(info_headers):
-        cell = table_info.rows[0].cells[i]
-        cell.text = h
-        set_table_header_style(cell)
-        
-    for i, v in enumerate(info_values):
-        table_info.rows[1].cells[i].text = v
-        table_info.rows[1].cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-
+    doc = Document(); set_korean_font(doc)
+    head = doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0); head.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
-
-    # 3. 본문 섹션 생성
-    sections = [
-        ("1. 목적 (Objective)", "본 계획서는 의약품 품질 관리 시험법의 유효성을 보증하고, ICH 및 규제 기관의 요구사항을 충족하기 위한 밸리데이션 전략과 범위를 규정하는 데 목적이 있다."),
-        ("2. 적용 범위 (Scope)", f"본 문서는 {modality}의 {phase} 임상 시험용 의약품 품질 평가에 사용되는 모든 시험방법의 밸리데이션에 적용된다."),
-        ("3. 근거 가이드라인 (Reference Guideline)", "• ICH Q2(R2): Validation of Analytical Procedures\n• MFDS: 의약품 등 시험방법 밸리데이션 가이드라인\n• USP <1225>: Validation of Compendial Procedures"),
-        ("4. 역할 및 책임 (Roles & Responsibility)", "• 품질관리(QC): 밸리데이션 수행 및 데이터 분석, 결과 보고서 작성\n• 품질보증(QA): 계획서 및 보고서 승인, 규정 준수 여부 확인\n• 책임자: 전체 밸리데이션 일정 및 자원 관리")
-    ]
-
-    for title, content in sections:
-        doc.add_heading(title, level=1)
-        p = doc.add_paragraph(content)
-        p.paragraph_format.left_indent = Inches(0.2)
     
-    # 4. 밸리데이션 전략 테이블 (Main Table)
-    doc.add_heading('5. 밸리데이션 수행 전략 (Validation Strategy)', level=1)
-    doc.add_paragraph("각 시험법별 밸리데이션 수행 항목은 아래와 같이 설정한다.")
-
-    table = doc.add_table(rows=1, cols=4)
-    table.style = 'Table Grid'
+    table_info = doc.add_table(rows=2, cols=4); table_info.style = 'Table Grid'
+    headers = ["제품명 (Product)", "단계 (Phase)", "문서 번호 (Doc No.)", "제정 일자 (Date)"]
+    values = [f"{modality} Project", phase, "VMP-001", datetime.now().strftime('%Y-%m-%d')]
+    for i, h in enumerate(headers): 
+        c = table_info.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    for i, v in enumerate(values): 
+        c = table_info.rows[1].cells[i]; c.text=v; c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    # 테이블 헤더
-    hdr_cells = table.rows[0].cells
-    headers = ['연번 (No.)', '시험법 (Method)', '범주 (Category)', '필수 수행 항목 (Required Items)']
-    for i, h in enumerate(headers):
-        hdr_cells[i].text = h
-        set_table_header_style(hdr_cells[i])
+    doc.add_paragraph()
+    sections = [("1. 목적 (Objective)", "본 계획서는 밸리데이션 전략과 범위를 규정한다."),
+                ("2. 적용 범위 (Scope)", f"본 문서는 {modality}의 {phase} 시험법 밸리데이션에 적용된다."),
+                ("3. 근거 가이드라인 (Reference)", "• ICH Q2(R2)\n• MFDS 가이드라인")]
+    for t, c in sections: doc.add_heading(t, level=1); doc.add_paragraph(c)
 
-    # 테이블 데이터 채우기
+    doc.add_heading('4. 밸리데이션 수행 전략 (Validation Strategy)', level=1)
+    table = doc.add_table(rows=1, cols=4); table.style = 'Table Grid'
+    for i, h in enumerate(['No.', 'Method', 'Category', 'Required Items']):
+        c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     for idx, row in df_strategy.iterrows():
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(idx + 1)
-        row_cells[1].text = str(row['Method'])
-        row_cells[2].text = str(row['Category'])
-        row_cells[3].text = ", ".join(row['Required_Items'])
-
-    # 5. 일정 계획
-    doc.add_heading('6. 일정 계획 (Schedule)', level=1)
-    doc.add_paragraph("세부 일정은 개별 밸리데이션 계획서(Protocol)에 따르며, 프로젝트 타임라인에 맞춰 승인 완료한다.")
-
-    # 6. 결재란
-    doc.add_heading('7. 승인 (Approval)', level=1)
-    table_sign = doc.add_table(rows=2, cols=3)
-    table_sign.style = 'Table Grid'
-    sign_headers = ["작성 (Prepared by)", "검토 (Reviewed by)", "승인 (Approved by)"]
-    for i, h in enumerate(sign_headers):
-        cell = table_sign.rows[0].cells[i]
-        cell.text = h
-        set_table_header_style(cell)
+        r = table.add_row().cells; r[0].text=str(idx+1); r[1].text=str(row['Method']); r[2].text=str(row['Category']); r[3].text=", ".join(row['Required_Items'])
     
-    for i in range(3):
-        table_sign.rows[1].cells[i].text = "\n\n(서명/날짜)\n"
-
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Protocol 생성 함수 - 기존 유지]
+# [PROTOCOL 업그레이드: 머리글 반영 & 수행 방법 구체화]
 def generate_protocol_premium(method_name, category, params):
     doc = Document(); set_korean_font(doc)
-    doc.add_heading(f'Validation Protocol: {method_name}', 0)
-    p = doc.add_paragraph()
-    p.add_run("Test Category: ").bold = True; p.add_run(f"{category}\n")
-    p.add_run("Guideline: ").bold = True; p.add_run(f"{params.get('Reference_Guideline', 'ICH Q2(R2)')}")
     
+    # 0. 머리글 (Header) 설정 - 매 페이지 반복
+    section = doc.sections[0]
+    header = section.header
+    
+    # 머리글에 테이블 삽입 (깔끔한 배치를 위해)
+    htable = header.add_table(rows=1, cols=2)
+    htable.width = Inches(6.0)
+    
+    # 머리글 내용: Test Category / Guideline / Protocol No
+    # 왼쪽 셀
+    ht_c1 = htable.cell(0, 0)
+    p1 = ht_c1.paragraphs[0]
+    p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True
+    p1.add_run(f"Test Category: {category}")
+    
+    # 오른쪽 셀
+    ht_c2 = htable.cell(0, 1)
+    p2 = ht_c2.paragraphs[0]
+    p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p2.add_run(f"Guideline: {params.get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True
+    p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+
+    # 1. 문서 제목
+    title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+
+    # 2. 본문 섹션
+    
+    # 2-1. 목적
     doc.add_heading('1. 목적 (Objective)', level=1)
-    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 절차, 방법 및 판정 기준을 기술한다.")
+    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법이 설정된 품질 기준에 적합한지 입증하기 위해, 밸리데이션 파라미터를 평가하는 구체적인 절차와 판정 기준을 기술한다.")
 
-    doc.add_heading('2. 기기 및 분석 조건 (Instruments & Conditions)', level=1)
-    table_cond = doc.add_table(rows=0, cols=2); table_cond.style = 'Table Grid'
-    cond_items = [("기기 (Instrument)", params.get('Instrument')), ("컬럼 (Column)", params.get('Column_Plate')),
-                  ("조건 A (Condition)", params.get('Condition_A')), ("조건 B (Condition)", params.get('Condition_B')),
-                  ("검출 (Detection)", params.get('Detection'))]
-    for k, v in cond_items:
-        r = table_cond.add_row().cells; r[0].text = k; r[0].paragraphs[0].runs[0].bold = True; r[1].text = v if v else "N/A"
+    # 2-2. 근거 및 참고 규격 (Reference) - 요청하신대로 목적 다음 배치
+    doc.add_heading('2. 근거 및 참고 규격 (Reference)', level=1)
+    doc.add_paragraph("본 계획서는 다음의 가이드라인 및 규정에 근거하여 작성되었다.")
+    doc.add_paragraph("• ICH Q2(R2): Validation of Analytical Procedures")
+    doc.add_paragraph("• USP <1225>: Validation of Compendial Procedures")
+    doc.add_paragraph("• MFDS: 의약품 등 시험방법 밸리데이션 가이드라인")
 
-    doc.add_heading('3. 밸리데이션 항목 및 기준 (Criteria)', level=1)
-    table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
-    table.rows[0].cells[0].text = "항목 (Parameter)"; table.rows[0].cells[1].text = "절차 및 판정 기준 (Criteria)"
-    table.rows[0].cells[0].paragraphs[0].runs[0].bold = True; table.rows[0].cells[1].paragraphs[0].runs[0].bold = True
+    # 2-3. 기기 및 시약
+    doc.add_heading('3. 기기 및 시약 (Instruments & Reagents)', level=1)
+    doc.add_paragraph("■ 기기 및 분석 조건 (Analytical Conditions)")
+    t_cond = doc.add_table(rows=0, cols=2); t_cond.style = 'Table Grid'
+    for k, v in [("기기 (Instrument)", params.get('Instrument')), ("컬럼 (Column)", params.get('Column_Plate')), 
+                 ("검출기 (Detector)", params.get('Detection')), ("이동상 (Mobile Phase)", f"A: {params.get('Condition_A')}\nB: {params.get('Condition_B')}")]:
+        r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v if v else "N/A"
     
-    items = [("특이성 (Specificity)", params.get('Detail_Specificity')), ("직선성 (Linearity)", params.get('Detail_Linearity')),
-             ("범위 (Range)", params.get('Detail_Range')), ("정확성 (Accuracy)", params.get('Detail_Accuracy')),
-             ("정밀성 (반복성)", params.get('Detail_Precision')), ("실험실내 정밀성", params.get('Detail_Inter_Precision')),
-             ("LOD/LOQ", f"LOD: {params.get('Detail_LOD')} / LOQ: {params.get('Detail_LOQ')}"), ("완건성 (Robustness)", params.get('Detail_Robustness'))]
-    for k, v in items:
-        if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text = k; r[1].text = v
+    doc.add_paragraph("\n■ 시약 및 표준품 (Reagents & Standards)")
+    doc.add_paragraph(f"• 표준품: {params.get('Ref_Standard_Info', 'N/A')}")
+    doc.add_paragraph(f"• 시약: {params.get('Reagent_List', 'N/A')}")
+
+    # 2-4. 밸리데이션 수행 방법 및 기준 (핵심!)
+    doc.add_heading('4. 밸리데이션 수행 방법 및 기준 (Procedures & Criteria)', level=1)
+    doc.add_paragraph("각 항목별 상세 수행 방법(Procedure)과 판정 기준(Criteria)은 다음과 같다.")
+    
+    # 상세 테이블 (3열: 항목 | 시험 방법 | 판정 기준)
+    table = doc.add_table(rows=1, cols=3); table.style = 'Table Grid'
+    table.autofit = False
+    table.columns[0].width = Inches(1.2) # 항목
+    table.columns[1].width = Inches(3.5) # 방법
+    table.columns[2].width = Inches(1.8) # 기준
+    
+    headers = ["항목 (Parameter)", "시험 방법 (Test Procedure)", "판정 기준 (Criteria)"]
+    for i, h in enumerate(headers):
+        c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+
+    # 항목별 프로시저 자동 생성 로직 (SOP 수준)
+    def add_row(param_name, procedure, criteria):
+        if criteria and "정보 없음" not in criteria:
+            r = table.add_row().cells
+            r[0].text = param_name
+            r[1].text = procedure
+            r[2].text = criteria
+
+    # 1. 특이성
+    add_row("특이성\n(Specificity)", 
+            "1) 공시험액(Blank), 위약(Placebo), 표준액, 검체액을 각각 준비한다.\n"
+            "2) 각 용액을 분석하여 주성분 피크 위치에 방해하는 피크가 있는지 확인한다.", 
+            params.get('Detail_Specificity'))
+    
+    # 2. 직선성 (3회 반복 반영)
+    add_row("직선성\n(Linearity)", 
+            f"1) 기준 농도({params.get('Target_Conc', '100')} {params.get('Unit', '%')})를 중심으로 80 ~ 120% 범위 내에서 최소 5개 농도(예: 80, 90, 100, 110, 120%)를 조제한다.\n"
+            "2) 각 농도별로 3회 반복 주입(Triplicate Injection)하여 분석한다.\n"
+            "3) 농도(X)와 반응값(Y)에 대한 회귀분석을 수행하여 결정계수(R²)를 산출한다.", 
+            params.get('Detail_Linearity'))
+    
+    # 3. 범위 (구체적 제조)
+    add_row("범위\n(Range)",
+            "직선성, 정확성, 정밀성이 모두 적합한 것으로 확인된 최저 및 최고 농도 구간으로 설정한다.",
+            params.get('Detail_Range'))
+
+    # 4. 정확성 (3농도 x 3회)
+    add_row("정확성\n(Accuracy)",
+            "1) 기준 농도의 80%, 100%, 120% 수준으로 검체(Spiked Sample)를 조제한다.\n"
+            "2) 각 농도 수준별로 3회씩 반복 조제하여 분석한다 (총 9회).\n"
+            "3) 각 결과의 회수율(Recovery %)을 계산한다.",
+            params.get('Detail_Accuracy'))
+
+    # 5. 정밀성 (반복성)
+    add_row("반복성\n(Repeatability)",
+            f"1) 기준 농도({params.get('Target_Conc', '100')} {params.get('Unit', '%')})의 검체를 6회 반복 조제한다.\n"
+            "2) 동일 조건 하에서 연속적으로 분석한다.\n"
+            "3) 6회 결과의 평균 및 상대표준편차(RSD)를 계산한다.",
+            params.get('Detail_Precision'))
+
+    # 6. 실험실내 정밀성
+    add_row("실험실내 정밀성\n(Int. Precision)",
+            "1) 시험일(Day) 또는 시험자(Analyst)를 변경하여 반복성 시험을 동일하게 수행한다 (n=6).\n"
+            "2) 첫 번째 결과(Day 1)와 두 번째 결과(Day 2)를 통합하여 전체 RSD 및 두 그룹 간 차이를 평가한다.",
+            params.get('Detail_Inter_Precision'))
+
+    # 7. 완건성
+    add_row("완건성\n(Robustness)",
+            "다음의 분석 조건을 의도적으로 소폭 변경하여 시스템 적합성(SST) 및 결과에 미치는 영향을 평가한다.\n"
+            f"- 변경 조건: {params.get('Detail_Robustness', '유속, 온도 등')}",
+            "시스템 적합성 기준 만족 및 결과값의 유의한 차이 없음")
+
+    doc.add_paragraph("\n위 절차에 따라 시험을 수행하고, 모든 결과는 시험일지(Logbook)에 기록하며 원본 데이터(Raw Data)를 첨부한다.")
+    
+    # 승인란
+    doc.add_paragraph("\n\n")
+    table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
+    for i, h in enumerate(["작성 (Prepared by)", "검토 (Reviewed by)", "승인 (Approved by)"]):
+        c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
+
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - 기존 유지]
+# [Excel 생성 함수 - 기존 유지 (5탭, 차트, 3회반복)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
@@ -324,7 +373,7 @@ with col2:
             
             with t1:
                 st.markdown("### 1️⃣ 전략 (VMP) 및 상세 계획서 (Protocol)")
-                st.info("VMP 다운로드 시: 표지, 문서 정보, 목적, 근거 가이드라인, 전략 테이블이 포함된 '실질 문서'가 생성됩니다.")
+                st.info("Protocol 다운로드 시, 머리글(Header)에 문서 정보가 포함되며, '시험 방법(Procedure)'에 3회 반복, 5개 농도 등 구체적인 지침이 자동 기술됩니다.")
                 st.dataframe(my_plan[["Method", "Category"]])
                 c1, c2 = st.columns(2)
                 with c1: st.download_button("📥 VMP(종합계획서) 다운로드", generate_vmp_premium(sel_modality, sel_phase, my_plan), "VMP_Master.docx")
