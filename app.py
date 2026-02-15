@@ -167,14 +167,13 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
         nonlocal row
         ws.merge_range(row, 0, row, 5, f"■ {main_title}", header)
         row += 1
-        section_start_row = row
+        data_start_row = row
         for rep in range(1, reps + 1):
             set_title = f"{main_title.split(' ')[0]} - {rep}회차 조제 (Set {rep})"
             ws.merge_range(row, 0, row, 5, set_title, section_title)
             row += 1
             ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub)
             row += 1
-            data_start = row
             for level in levels:
                 t_val = float(target_conc) * (level / 100)
                 if float(stock_conc) < t_val: s_vol = "Error"; d_vol = "Stock Too Low"
@@ -187,13 +186,14 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
                 row += 1
             ws.write(row, 1, f"[{rep}회차] 소요 Stock:", sub)
             if isinstance(s_vol, str): ws.write(row, 2, "Error", total_fmt)
-            else: ws.write_formula(row, 2, f"=SUM(C{data_start+1}:C{row})", total_fmt)
+            else: ws.write_formula(row, 2, f"=SUM(C{row-len(levels)}:C{row-1})", total_fmt) # Fixed sum range
             row += 2 
 
     add_section_grouped("1. 시스템 적합성 (SST)", [100], 1)
     add_section_grouped("2. 특이성 (Specificity)", [100], 1)
     add_section_grouped("3. 직선성 (Linearity)", [80, 90, 100, 110, 120], 3)
     add_section_grouped("4. 정확성 (Accuracy)", [80, 100, 120], 3)
+    
     ws.merge_range(row, 0, row, 5, "■ 5. 정밀성 (Repeatability)", header); row += 2
     ws.merge_range(row, 0, row, 5, "반복성 시험 세트 (n=6)", section_title); row += 1
     ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub); row += 1
@@ -201,133 +201,194 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
     for i in range(1, 7):
         t_val = float(target_conc); s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
         ws.write(row, 0, f"Prec-100%-{i}", cell); ws.write(row, 1, t_val, num); ws.write(row, 2, s_vol, auto); ws.write(row, 3, d_vol, auto); ws.write(row, 4, float(req_vol), num); ws.write(row, 5, "□", cell); row += 1
-    ws.write(row, 1, "[정밀성] 소요 Stock:", sub); ws.write_formula(row, 2, f"=SUM(C{p_start+1}:C{row})", total_fmt); row += 2
+    ws.write(row, 1, "[정밀성] 소요 Stock:", sub); ws.write_formula(row, 2, f"=SUM(C{p_start}:C{row-1})", total_fmt); row += 2
+    
     add_section_grouped("7. 완건성 (Robustness)", [100], 3) 
     add_section_grouped("8. LOD/LOQ", [1, 0.5], 3)
     ws.write_formula('E6', f"=SUM(C9:C{row})", workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FF0000', 'font_color':'white', 'num_format':'0.00', 'align':'center'}))
     workbook.close(); output.seek(0)
     return output
 
-# [PROTOCOL 업그레이드: 상세 시험 방법 (Actionable SOP)]
+# [PROTOCOL 생성 함수]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
     doc = Document(); set_korean_font(doc)
     def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
-    
-    target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100')
-    unit = safe_get('Unit', '%')
-
+    target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
     section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0)) 
     ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    
     title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0); title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER; doc.add_paragraph()
-    
     doc.add_heading('1. 목적 (Objective)', level=1); doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 수행 방법 및 판정 기준을 기술한다.")
     doc.add_heading('2. 근거 (Reference)', level=1); doc.add_paragraph("• ICH Q2(R2) & MFDS 가이드라인")
     doc.add_heading('3. 기기 및 시약', level=1); t_cond = doc.add_table(rows=0, cols=2); t_cond.style = 'Table Grid'
     for k, v in [("기기", safe_get('Instrument')), ("컬럼", safe_get('Column_Plate')), ("조건", f"A: {safe_get('Condition_A')}\nB: {safe_get('Condition_B')}"), ("검출기", safe_get('Detection'))]:
         r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v
-    
-    doc.add_heading('4. 밸리데이션 항목 및 기준 (Criteria)', level=1); table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
+    doc.add_heading('4. 밸리데이션 항목 및 기준', level=1); table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
     headers = ["항목 (Parameter)", "판정 기준 (Criteria)"]; 
     for i, h in enumerate(headers): c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     items = [("특이성", safe_get('Detail_Specificity')), ("직선성", safe_get('Detail_Linearity')), ("범위", safe_get('Detail_Range')), ("정확성", safe_get('Detail_Accuracy')), ("정밀성", safe_get('Detail_Precision')), ("완건성", safe_get('Detail_Robustness'))]
     for k, v in items:
         if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text=k; r[1].text=v
-    
-    # 5. 상세 시험 방법 (Detailed Narrative SOP)
-    doc.add_heading('5. 상세 시험 방법 (Test Procedures)', level=1)
-    
-    doc.add_heading('5.1 표준 모액 조제 (Stock Preparation)', level=2)
-    doc.add_paragraph(f"1) 표준품 적당량을 정밀히 칭량하여 희석액에 용해시킨다.")
-    doc.add_paragraph(f"2) 최종 농도가 **{stock_conc if stock_conc else '[입력필요]'} {unit}**가 되도록 표선까지 채운다.")
-    doc.add_paragraph("3) 용해 후 30초 이상 강하게 Vortexing 하고, 필요시 초음파 처리를 수행한다.")
-    doc.add_paragraph("4) 조제된 Stock 용액은 차광하여 실온에 보관한다.")
-
-    doc.add_heading('5.2 시스템 적합성 (System Suitability)', level=2)
-    doc.add_paragraph(f"1) 기준 농도({target_conc} {unit})의 표준액을 1회 조제한다.")
-    doc.add_paragraph("2) HPLC 시스템 안정화 후, 표준액을 6회 반복 주입한다.")
-    doc.add_paragraph("3) 머무름 시간(RT) 및 면적(Area)의 상대표준편차(RSD)가 기준 이내인지 확인한다.")
-
-    doc.add_heading('5.3 직선성 (Linearity)', level=2)
-    doc.add_paragraph(f"1) 기준 농도 {target_conc} {unit}를 100%로 설정한다.")
-    doc.add_paragraph("2) 별첨된 [Master Recipe] 엑셀 시트의 '3. 직선성' 탭을 참조한다.")
-    doc.add_paragraph(f"3) Stock 용액을 희석하여 80%, 90%, 100%, 110%, 120% 수준의 5개 농도를 조제한다.")
-    doc.add_paragraph("4) 각 농도별로 **3개의 독립적인 바이알(Vial)**을 준비한다 (예: 80%-1, 80%-2, 80%-3).")
-    doc.add_paragraph("5) 준비된 총 15개의 검액을 HPLC에 주입하여 분석한다.")
-    
+    doc.add_heading('5. 상세 시험 방법 (Procedures)', level=1)
+    doc.add_heading('5.1 용액 조제', level=2); doc.add_paragraph(f"1) 표준 모액: 농도 {stock_conc if stock_conc else '[입력필요]'} {unit} 용액을 준비한다.")
+    doc.add_heading('5.2 직선성', level=2); doc.add_paragraph(f"기준 농도 {target_conc} {unit}를 중심으로 80 ~ 120% 범위 내 5개 농도를 조제한다.")
     if stock_conc and req_vol and float(stock_conc) >= float(target_conc) * 1.2:
-        doc.add_paragraph("■ 조제 예시 (80% 농도, 1회차):")
-        doc.add_paragraph(f"- Stock: {((float(target_conc)*0.8)*float(req_vol)/float(stock_conc)):.3f} mL")
-        doc.add_paragraph(f"- Diluent: {(float(req_vol) - ((float(target_conc)*0.8)*float(req_vol)/float(stock_conc))):.3f} mL")
-        doc.add_paragraph("- 혼합 후 10초간 Vortexing 한다.")
-
-    doc.add_heading('5.4 정확성 (Accuracy)', level=2)
-    doc.add_paragraph("1) 기준 농도의 80%, 100%, 120% 수준으로 조제한다.")
-    doc.add_paragraph("2) 각 농도별로 **3회씩 독립적으로(Independently)** 반복 조제하여 총 9개의 검액을 준비한다.")
-    doc.add_paragraph("3) 각 검액을 분석하여 얻은 농도값과 이론값의 비율(회수율, %)을 계산한다.")
-
-    doc.add_heading('5.5 정밀성 (Precision)', level=2)
-    doc.add_paragraph(f"1) 기준 농도({target_conc} {unit})에 해당하는 검액을 **6회 독립적으로** 조제한다 (Prep 1 ~ Prep 6).")
-    doc.add_paragraph("2) 동일한 HPLC 조건에서 연속적으로 분석한다.")
-    doc.add_paragraph("3) 6회 결과값의 평균 및 RSD를 산출하여 판정 기준 적합 여부를 평가한다.")
-
-    doc.add_heading('5.6 특이성 (Specificity)', level=2)
-    doc.add_paragraph("1) 이동상(Blank)과 부형제(Placebo) 용액을 각각 주입하여 주성분 피크 위치에 간섭 피크가 없는지 확인한다.")
-    doc.add_paragraph("2) 표준액 주입 시 주성분 피크가 정상적으로 분리되는지 확인한다.")
-
+        t_lin = doc.add_table(rows=1, cols=4); t_lin.style = 'Table Grid'
+        for i, h in enumerate(["Level", "Target", "Stock (mL)", "Diluent (mL)"]): c = t_lin.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+        for level in [80, 90, 100, 110, 120]:
+            t_val = float(target_conc) * (level/100); s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
+            r = t_lin.add_row().cells; r[0].text=f"{level}%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
+    doc.add_heading('5.3 정확성', level=2); doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 각 3회씩 독립적으로 조제한다.")
     doc.add_paragraph("\n\n"); table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
     for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - Logbook 전용 (기존 유지)]
+# [Excel 생성 함수 - Full GMP Logbook (SST, Specificity, Linearity, Accuracy, Precision, LOD/LOQ, Robustness)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    # Styles
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center', 'valign':'vcenter'})
     cell = workbook.add_format({'border':1, 'align':'center'}); num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
-    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'})
+    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) # Input
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # Auto Calc
+
+    # 1. Info Sheet
     ws1 = workbook.add_worksheet("1. Info & Prep"); ws1.set_column('A:A', 20); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     r = 3; 
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+1, 0, "Reagent", sub); ws1.merge_range(r+1, 1, r+1, 4, params.get('Ref_Standard_Info', ''), cell)
     ws1.write(r+2, 0, "Prep Method", sub); ws1.merge_range(r+2, 1, r+2, 4, params.get('Preparation_Sample', ''), cell)
+
+    # 2. SST Sheet (System Suitability)
+    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:E', 15)
+    ws_sst.merge_range('A1:E1', 'System Suitability Test (n=6)', header)
+    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing Factor"], sub)
+    for i in range(1, 7):
+        ws_sst.write(i+1, 0, i, cell)
+        for c in range(1, 5): ws_sst.write(i+1, c, "", calc) # User input
+    
+    # SST Calc
+    ws_sst.write('A9', "Mean:", sub); ws_sst.write_formula('B9', "=AVERAGE(B3:B8)", auto); ws_sst.write_formula('C9', "=AVERAGE(C3:C8)", auto)
+    ws_sst.write('A10', "RSD (%):", sub); ws_sst.write_formula('B10', "=STDEV(B3:B8)/B9*100", auto); ws_sst.write_formula('C10', "=STDEV(C3:C8)/C9*100", auto)
+    ws_sst.merge_range('A12:E12', f"Criteria: {params.get('SST_Criteria', 'RSD < 2.0%')}", cell)
+
+    # 3. Specificity Sheet
+    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:D', 20)
+    ws_spec.merge_range('A1:D1', 'Specificity Test', header)
+    ws_spec.write_row('A2', ["Sample", "RT of Main Peak", "Interference Area", "Result (Pass/Fail)"], sub)
+    for i, s in enumerate(["Blank", "Placebo", "Standard", "Sample"]):
+        ws_spec.write(i+3, 0, s, cell)
+        ws_spec.write(i+3, 1, "", calc); ws_spec.write(i+3, 2, "", calc); ws_spec.write(i+3, 3, "", calc)
+
+    # 4. Linearity Sheet
     target_conc = params.get('Target_Conc')
     if target_conc:
         try: target_val_base = float(target_conc)
         except: target_val_base = 0
-        ws2 = workbook.add_worksheet("2. Linearity"); ws2.set_column('A:H', 12); unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:H1', f'Linearity: Triplicate Analysis (Target: {target_conc} {unit})', header)
-        for c, h in enumerate(["Level", "Rep", f"Conc ({unit})", "Weight", "Vol", "Response (Y)", "Mean (Y)", "RSD (%)"]): ws2.write(2, c, h, sub)
+        ws2 = workbook.add_worksheet("4. Linearity"); ws2.set_column('A:H', 12); unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:H1', f'Linearity: 3 Reps (Target: {target_conc} {unit})', header)
+        for c, h in enumerate(["Level", "Rep", f"Conc ({unit})", "Area (Y)", "Mean Area", "RSD (%)"]): ws2.write(2, c, h, sub)
+        
         levels = [80, 90, 100, 110, 120]; row = 3; chart_rows = []
         for level in levels:
             target_val = target_val_base * (level / 100); start_row = row + 1
             for i in range(1, 4):
-                ws2.write_row(row, 0, [f"{level}%", i, target_val, "", 50, ""], cell)
-                if i == 1: ws2.merge_range(row, 6, row+2, 6, "", calc); ws2.write_formula(row, 6, f"=AVERAGE(F{start_row}:F{start_row+2})", calc); ws2.merge_range(row, 7, row+2, 7, "", calc); ws2.write_formula(row, 7, f"=STDEV(F{start_row}:F{start_row+2})/G{start_row}*100", calc); chart_rows.append(row + 1)
+                ws2.write_row(row, 0, [f"{level}%", i, target_val, ""], cell)
+                ws2.write(row, 3, "", calc) # User Input Area
+                if i == 1: 
+                    ws2.merge_range(row, 4, row+2, 4, "", auto); ws2.write_formula(row, 4, f"=AVERAGE(D{start_row}:D{start_row+2})", auto)
+                    ws2.merge_range(row, 5, row+2, 5, "", auto); ws2.write_formula(row, 5, f"=STDEV(D{start_row}:D{start_row+2})/E{start_row}*100", auto)
+                    chart_rows.append(row + 1)
                 row += 1
-        s_row = row + 2; ws2.merge_range(s_row, 1, s_row, 3, "■ Summary for Chart", sub); ws2.write_row(s_row+1, 1, ["Conc (X)", "Mean (Y)", "R²"], sub)
-        for idx, r_idx in enumerate(chart_rows): ws2.write_formula(s_row+2+idx, 1, f"=C{r_idx}", num); ws2.write_formula(s_row+2+idx, 2, f"=G{r_idx}", num)
-        ws2.write_formula(s_row+2, 3, f"=RSQ(C{s_row+3}:C{s_row+7}, B{s_row+3}:B{s_row+7})", calc)
-        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'}); chart.add_series({'categories': f"='2. Linearity'!$B${s_row+3}:$B${s_row+7}", 'values': f"='2. Linearity'!$C${s_row+3}:$C${s_row+7}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}}); ws2.insert_chart('J3', chart)
-    if params.get('Detail_Inter_Precision'):
-        ws3 = workbook.add_worksheet("3. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Intermediate Precision', header); ws3.merge_range('A3:E3', "■ Day 1", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
-        for i in range(6): ws3.write_row(4+i, 0, [i+1, "Sample", ""], cell)
-        ws3.write_formula('D5', "=AVERAGE(C5:C10)", num); ws3.write_formula('E5', "=STDEV(C5:C10)/D5*100", num); ws3.merge_range('A12:E12', "■ Day 2", sub); ws3.write_row('A13', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
-        for i in range(6): ws3.write_row(13+i, 0, [i+1, "Sample", ""], cell)
-        ws3.write_formula('D14', "=AVERAGE(C14:C19)", num); ws3.write_formula('E14', "=STDEV(C14:C19)/D14*100", num); ws3.write('A21', "Diff (%)", sub); ws3.write_formula('B21', "=ABS(D5-D14)/AVERAGE(D5,D14)*100", num)
+        
+        # Summary & Chart
+        s_row = row + 2; ws2.merge_range(s_row, 1, s_row, 3, "■ Summary", sub); ws2.write_row(s_row+1, 1, ["Conc (X)", "Mean Area (Y)", "R²"], sub)
+        for idx, r_idx in enumerate(chart_rows): ws2.write_formula(s_row+2+idx, 1, f"=C{r_idx}", num); ws2.write_formula(s_row+2+idx, 2, f"=E{r_idx}", num)
+        
+        # Regression Params
+        ws2.write(s_row+2, 3, f"=RSQ(C{s_row+3}:C{s_row+7}, B{s_row+3}:B{s_row+7})", auto)
+        ws2.write(s_row+7, 1, "Slope:", sub); ws2.write_formula(s_row+7, 2, f"=SLOPE(C{s_row+3}:C{s_row+7}, B{s_row+3}:B{s_row+7})", auto)
+        ws2.write(s_row+8, 1, "Intercept:", sub); ws2.write_formula(s_row+8, 2, f"=INTERCEPT(C{s_row+3}:C{s_row+7}, B{s_row+3}:B{s_row+7})", auto)
+        
+        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'}); chart.add_series({'categories': f"='4. Linearity'!$B${s_row+3}:$B${s_row+7}", 'values': f"='4. Linearity'!$C${s_row+3}:$C${s_row+7}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}}); ws2.insert_chart('J3', chart)
+
+    # 5. Accuracy Sheet (With Auto Calculation)
+    ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:F', 15)
+    ws_acc.merge_range('A1:F1', 'Accuracy (Recovery Test)', header)
+    ws_acc.write_row('A2', ["Level", "Rep", "Theoretical Conc", "Area", "Calc Conc", "Recovery (%)"], sub)
+    
+    # Reference Slope/Intercept from Linearity Sheet
+    slope_ref = "'4. Linearity'!C26" # Approximate cell, better to use named range or fixed logic.
+    # For stability, we assume Slope is at C26, Intercept at C27 based on previous code.
+    # Or simplified: User inputs slope/intercept at top.
+    ws_acc.write('H2', "Slope:", sub); ws_acc.write('I2', "", calc)
+    ws_acc.write('H3', "Intercept:", sub); ws_acc.write('I3', "", calc)
+    ws_acc.write('H4', "(Enter from Linearity)", cell)
+
+    row = 3
+    for level in [80, 100, 120]:
+        t_val = target_val_base * (level/100)
+        for rep in range(1, 4):
+            ws_acc.write(row, 0, f"{level}%", cell); ws_acc.write(row, 1, rep, cell)
+            ws_acc.write(row, 2, t_val, num)
+            ws_acc.write(row, 3, "", calc) # User Area
+            # Calc Conc = (Area - Intercept) / Slope
+            ws_acc.write_formula(row, 4, f"=(D{row+1}-$I$3)/$I$2", auto)
+            # Recovery = Calc / Theo * 100
+            ws_acc.write_formula(row, 5, f"=E{row+1}/C{row+1}*100", auto)
+            row += 1
+    
+    ws_acc.write(row, 4, "Mean Recovery:", sub); ws_acc.write_formula(row, 5, f"=AVERAGE(F4:F{row})", auto)
+
+    # 6. Precision Sheet
+    ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision (Repeatability & Intermediate)', header)
+    ws3.merge_range('A3:E3', "■ Day 1 (Repeatability)", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
+    for i in range(6): ws3.write_row(4+i, 0, [i+1, "Sample", ""], calc) # Data input
+    ws3.write_formula('D5', "=AVERAGE(C5:C10)", num); ws3.write_formula('E5', "=STDEV(C5:C10)/D5*100", num)
+    
+    ws3.merge_range('A12:E12', "■ Day 2 (Intermediate Precision)", sub); ws3.write_row('A13', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
+    for i in range(6): ws3.write_row(13+i, 0, [i+1, "Sample", ""], calc)
+    ws3.write_formula('D14', "=AVERAGE(C14:C19)", num); ws3.write_formula('E14', "=STDEV(C14:C19)/D14*100", num)
+    ws3.write('A21', "Diff (%)", sub); ws3.write_formula('B21', "=ABS(D5-D14)/AVERAGE(D5,D14)*100", num)
+
+    # 7. Robustness Sheet
     if params.get('Detail_Robustness'):
-        ws4 = workbook.add_worksheet("4. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header); ws4.merge_range('A2:F2', f"Guide: {params.get('Detail_Robustness')}", cell)
-        for c, h in enumerate(["Condition", "Set", "Actual", "SST", "Pass/Fail", "Note"]): ws4.write(3, c, h, sub)
-        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, cell)
-    ws5 = workbook.add_worksheet("5. Raw Data"); ws5.set_column('A:F', 15); ws5.merge_range('A1:F1', 'Raw Data', header)
-    for c, h in enumerate(["Inj No.", "Sample Name", "RT", "Area", "Height", "Remarks"]): ws5.write(2, c, h, sub)
-    for r in range(3, 23): ws5.write_row(r, 0, [""]*6, cell)
+        ws4 = workbook.add_worksheet("7. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header)
+        for c, h in enumerate(["Condition", "Set", "Actual", "SST Result", "Pass/Fail", "Note"]): ws4.write(3, c, h, sub)
+        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]):
+            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, calc)
+
+    # 8. LOD/LOQ Sheet
+    ws_ll = workbook.add_worksheet("8. LOD_LOQ"); ws_ll.set_column('A:D', 15)
+    ws_ll.merge_range('A1:D1', 'LOD / LOQ Determination', header)
+    ws_ll.write_row('A2', ["Item", "Signal (Height)", "Noise", "S/N Ratio"], sub)
+    ws_ll.write('A3', "LOD Sample", cell); ws_ll.write('B3', "", calc); ws_ll.write('C3', "", calc); ws_ll.write_formula('D3', "=B3/C3", auto)
+    ws_ll.write('A4', "LOQ Sample", cell); ws_ll.write('B4', "", calc); ws_ll.write('C4', "", calc); ws_ll.write_formula('D4', "=B4/C4", auto)
+
     workbook.close(); output.seek(0)
     return output
+
+# [Report 생성 함수 - 기존 유지]
+def generate_summary_report_gmp(method_name, category, params, user_inputs):
+    doc = Document(); set_korean_font(doc); doc.add_heading(f'Validation Summary Report: {method_name}', 0)
+    info = doc.add_table(rows=3, cols=2); info.style='Table Grid'
+    d = [("Category", category), ("Lot/Date", f"{user_inputs['lot_no']} / {user_inputs['date']}"), ("Analyst", user_inputs['analyst'])]
+    for i, (k, v) in enumerate(d): info.rows[i].cells[0].text=k; info.rows[i].cells[1].text=str(v)
+    doc.add_heading('1. 상세 결과 (Results)', level=1)
+    table = doc.add_table(rows=1, cols=3); table.style='Table Grid'
+    table.rows[0].cells[0].text="항목"; table.rows[0].cells[1].text="기준"; table.rows[0].cells[2].text="결과"
+    check_items = [("특이성", params.get('Detail_Specificity'), "Pass"), ("직선성 (R²)", params.get('Detail_Linearity'), "Pass (See Chart)"),
+                   ("정밀성", params.get('Detail_Precision'), user_inputs.get('main_result', 'N/A')),
+                   ("실험실내 정밀성", params.get('Detail_Inter_Precision'), "Pass"), ("완건성", params.get('Detail_Robustness'), "Pass")]
+    for k, c, r in check_items:
+        if c: table.add_row().cells[0].text=k; table.rows[-1].cells[1].text=c; table.rows[-1].cells[2].text=r
+    doc.add_heading('2. 결론', level=1); doc.add_paragraph("본 시험법은 모든 밸리데이션 항목을 만족하므로 적합함.")
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    return doc_io
 
 # ---------------------------------------------------------
 # 4. 메인 UI
@@ -394,11 +455,12 @@ with col2:
                                 st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (3회 반복 & RSD)")
+                st.markdown("### 📗 스마트 엑셀 일지 (All Sheets Included)")
+                st.info("✅ 모든 항목(SST, 직선성, 정확성, 정밀성, 특이성, 완건성, LOD/LOQ)이 포함된 통합 엑셀 일지입니다.")
                 sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
-                    st.download_button("📊 Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
+                    st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
             with t3:
                 st.markdown("### 📊 최종 결과 보고서")
