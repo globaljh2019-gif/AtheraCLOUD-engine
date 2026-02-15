@@ -695,12 +695,11 @@ with col2:
                     )
 
 # ---------------------------------------------------------
-# 4. 엑셀 데이터 추출 (Parsing)
+# 4. 엑셀 데이터 추출 엔진
 # ---------------------------------------------------------
 def extract_logbook_data(uploaded_file):
     results = {}
     try:
-        # SST
         df_sst = pd.read_excel(uploaded_file, sheet_name='2. SST', header=None)
         rsd_row = df_sst[df_sst.eq("RSD(%)").any(axis=1)].index
         if not rsd_row.empty:
@@ -709,7 +708,6 @@ def extract_logbook_data(uploaded_file):
             res_row = df_sst[df_sst.eq("Result:").any(axis=1)].index
             if not res_row.empty: results['sst_pass'] = df_sst.iloc[res_row[0], 1]
         
-        # Linearity
         df_lin = pd.read_excel(uploaded_file, sheet_name='4. Linearity', header=None)
         r2_row = df_lin[df_lin.eq("Final R²:").any(axis=1)].index
         if not r2_row.empty:
@@ -717,7 +715,6 @@ def extract_logbook_data(uploaded_file):
             results['lin_res'] = f"R² = {r2_val}"
             results['lin_pass'] = df_lin.iloc[r2_row[0], 5]
 
-        # Accuracy
         df_acc = pd.read_excel(uploaded_file, sheet_name='5. Accuracy', header=None)
         mean_recs = []
         for r in df_acc.index:
@@ -727,26 +724,24 @@ def extract_logbook_data(uploaded_file):
                     if pd.notna(val): mean_recs.append(val)
         if mean_recs:
             results['acc_res'] = f"{min(mean_recs)}% ~ {max(mean_recs)}%"
-            results['acc_pass'] = "Pass" # Logic simplified
+            results['acc_pass'] = "Pass"
 
-        # Precision
         df_prec = pd.read_excel(uploaded_file, sheet_name='6. Precision', header=None)
         rsd_rows = df_prec[df_prec.eq("Result:").any(axis=1)].index
         if not rsd_rows.empty:
-            results['prec_res'] = f"RSD: {df_prec.iloc[rsd_rows[0]-6, 4]}%" # approx
+            results['prec_res'] = f"RSD: {df_prec.iloc[rsd_rows[0]-6, 4]}%" 
             results['prec_pass'] = df_prec.iloc[rsd_rows[0], 4]
 
     except Exception as e: st.error(f"Error extracting data: {e}"); return {}
     return results
 
 # ---------------------------------------------------------
-# 5. 최종 보고서 생성 (Automated)
+# 5. 최종 보고서 생성 (Pre-filled)
 # ---------------------------------------------------------
 def generate_summary_report_gmp(method_name, category, params, context, test_results=None):
     if test_results is None: test_results = {}
     doc = Document(); set_korean_font(doc)
     
-    # Header
     section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
     ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Final Report: {method_name}\n").bold = True; p1.add_run(f"Lot: {context.get('lot_no')}")
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
@@ -782,10 +777,20 @@ def generate_summary_report_gmp(method_name, category, params, context, test_res
 
 def generate_master_recipe_excel(method_name, target, unit, stock, vol, type_):
     output = io.BytesIO(); wb = xlsxwriter.Workbook(output); ws = wb.add_worksheet()
-    ws.write(0, 0, "Simple Recipe Calculator"); wb.close(); output.seek(0); return output
+    ws.write(0, 0, "Recipe Calculator"); wb.close(); output.seek(0); return output
+
+def generate_vmp_premium(modality, phase, df_strategy):
+    doc = Document(); set_korean_font(doc)
+    doc.add_heading('Validation Master Plan', 0)
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0); return doc_io
+
+def generate_protocol_premium(method_name, category, params, stock=None, vol=None, target=None):
+    doc = Document(); set_korean_font(doc)
+    doc.add_heading(f'Protocol: {method_name}', 0)
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0); return doc_io
 
 # ---------------------------------------------------------
-# 6. 메인 UI Loop
+# 6. 메인 UI (Streamlit Loop)
 # ---------------------------------------------------------
 st.set_page_config(page_title="AtheraCLOUD Full Suite", layout="wide")
 st.title("🧪 AtheraCLOUD: Full CMC Validation Suite")
