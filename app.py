@@ -6,7 +6,7 @@ import xlsxwriter
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -28,6 +28,7 @@ headers = {"Authorization": "Bearer " + NOTION_API_KEY, "Content-Type": "applica
 
 @st.cache_data
 def get_criteria_map():
+    if not CRITERIA_DB_ID: return {}
     url = f"https://api.notion.com/v1/databases/{CRITERIA_DB_ID}/query"
     res = requests.post(url, headers=headers)
     criteria_map = {}
@@ -35,12 +36,14 @@ def get_criteria_map():
         for p in res.json().get("results", []):
             try:
                 props = p["properties"]
-                criteria_map[p["id"]] = {"Category": props["Test_Category"]["title"][0]["text"]["content"], 
-                                         "Required_Items": [i["name"] for i in props["Required_Items"]["multi_select"]]}
+                cat = props["Test_Category"]["title"][0]["text"]["content"] if props["Test_Category"]["title"] else "Unknown"
+                req = [i["name"] for i in props["Required_Items"]["multi_select"]]
+                criteria_map[p["id"]] = {"Category": cat, "Required_Items": req}
             except: continue
     return criteria_map
 
 def get_strategy_list(criteria_map):
+    if not STRATEGY_DB_ID: return pd.DataFrame()
     url = f"https://api.notion.com/v1/databases/{STRATEGY_DB_ID}/query"
     res = requests.post(url, headers=headers)
     data = []
@@ -48,29 +51,34 @@ def get_strategy_list(criteria_map):
         for p in res.json().get("results", []):
             try:
                 props = p["properties"]
+                mod = props["Modality"]["select"]["name"] if props["Modality"]["select"] else ""
+                ph = props["Phase"]["select"]["name"] if props["Phase"]["select"] else ""
+                met = props["Method Name"]["rich_text"][0]["text"]["content"] if props["Method Name"]["rich_text"] else ""
                 rel = props["Test Category"]["relation"]
                 cat, items = ("Unknown", [])
                 if rel and rel[0]["id"] in criteria_map:
                     cat = criteria_map[rel[0]["id"]]["Category"]
                     items = criteria_map[rel[0]["id"]]["Required_Items"]
-                data.append({"Modality": props["Modality"]["select"]["name"], "Phase": props["Phase"]["select"]["name"],
-                             "Method": props["Method Name"]["rich_text"][0]["text"]["content"], "Category": cat, "Required_Items": items})
+                data.append({"Modality": mod, "Phase": ph, "Method": met, "Category": cat, "Required_Items": items})
             except: continue
     return pd.DataFrame(data)
 
 def get_method_params(method_name):
-    if not PARAM_DB_ID: return None
+    if not PARAM_DB_ID: return {}
     url = f"https://api.notion.com/v1/databases/{PARAM_DB_ID}/query"
     payload = {"filter": {"property": "Method_Name", "title": {"equals": method_name}}}
     res = requests.post(url, headers=headers, json=payload)
     if res.status_code == 200 and res.json().get("results"):
         props = res.json()["results"][0]["properties"]
         def txt(n): 
-            try: return "".join([t["text"]["content"] for t in props[n]["rich_text"]])
+            try: 
+                ts = props.get(n, {}).get("rich_text", [])
+                return "".join([t["text"]["content"] for t in ts]) if ts else ""
             except: return ""
         def num(n):
-            try: return props[n]["number"]
+            try: return props.get(n, {}).get("number")
             except: return None
+            
         return {
             "Instrument": txt("Instrument"), "Column_Plate": txt("Column_Plate"),
             "Condition_A": txt("Condition_A"), "Condition_B": txt("Condition_B"), "Detection": txt("Detection"),
@@ -84,7 +92,7 @@ def get_method_params(method_name):
             "Calculation_Formula": txt("Calculation_Formula"), "Logic_Statement": txt("Logic_Statement"),
             "Target_Conc": num("Target_Conc"), "Unit": txt("Unit")
         }
-    return None
+    return {}
 
 # ---------------------------------------------------------
 # 3. 문서 생성 엔진
@@ -100,10 +108,12 @@ def set_table_header_style(cell):
     shading_elm = OxmlElement('w:shd')
     shading_elm.set(qn('w:fill'), 'D9D9D9') 
     tcPr.append(shading_elm)
-    cell.paragraphs[0].runs[0].bold = True
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if cell.paragraphs:
+        if cell.paragraphs[0].runs:
+            cell.paragraphs[0].runs[0].bold = True
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-# [VMP 생성 함수 - 기존 유지]
+# [VMP 생성 함수]
 def generate_vmp_premium(modality, phase, df_strategy):
     doc = Document(); set_korean_font(doc)
     head = doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0); head.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -133,145 +143,81 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [PROTOCOL 업그레이드: 머리글 반영 & 수행 방법 구체화]
+# [PROTOCOL 생성 함수 - 에러 방지 강화]
 def generate_protocol_premium(method_name, category, params):
     doc = Document(); set_korean_font(doc)
     
-    # 0. 머리글 (Header) 설정 - 매 페이지 반복
-    section = doc.sections[0]
-    header = section.header
-    
-    # 머리글에 테이블 삽입 (깔끔한 배치를 위해)
-    htable = header.add_table(rows=1, cols=2)
-    htable.width = Inches(6.0)
-    
-    # 머리글 내용: Test Category / Guideline / Protocol No
-    # 왼쪽 셀
-    ht_c1 = htable.cell(0, 0)
-    p1 = ht_c1.paragraphs[0]
+    # 안전한 값 가져오기 (None 방지)
+    def safe_get(key, default=""):
+        val = params.get(key)
+        return str(val) if val is not None else default
+
+    # 머리글
+    section = doc.sections[0]; header = section.header
+    htable = header.add_table(rows=1, cols=2); htable.width = Inches(6.0)
+    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]
     p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True
     p1.add_run(f"Test Category: {category}")
-    
-    # 오른쪽 셀
-    ht_c2 = htable.cell(0, 1)
-    p2 = ht_c2.paragraphs[0]
-    p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p2.add_run(f"Guideline: {params.get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True
+    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True
     p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
 
-    # 1. 문서 제목
-    title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph()
+    # 제목
+    title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0); title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER; doc.add_paragraph()
 
-    # 2. 본문 섹션
-    
-    # 2-1. 목적
+    # 본문
     doc.add_heading('1. 목적 (Objective)', level=1)
-    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법이 설정된 품질 기준에 적합한지 입증하기 위해, 밸리데이션 파라미터를 평가하는 구체적인 절차와 판정 기준을 기술한다.")
+    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 절차와 기준을 기술한다.")
 
-    # 2-2. 근거 및 참고 규격 (Reference) - 요청하신대로 목적 다음 배치
     doc.add_heading('2. 근거 및 참고 규격 (Reference)', level=1)
-    doc.add_paragraph("본 계획서는 다음의 가이드라인 및 규정에 근거하여 작성되었다.")
-    doc.add_paragraph("• ICH Q2(R2): Validation of Analytical Procedures")
-    doc.add_paragraph("• USP <1225>: Validation of Compendial Procedures")
-    doc.add_paragraph("• MFDS: 의약품 등 시험방법 밸리데이션 가이드라인")
+    doc.add_paragraph("• ICH Q2(R2): Validation of Analytical Procedures\n• MFDS 가이드라인")
 
-    # 2-3. 기기 및 시약
     doc.add_heading('3. 기기 및 시약 (Instruments & Reagents)', level=1)
-    doc.add_paragraph("■ 기기 및 분석 조건 (Analytical Conditions)")
     t_cond = doc.add_table(rows=0, cols=2); t_cond.style = 'Table Grid'
-    for k, v in [("기기 (Instrument)", params.get('Instrument')), ("컬럼 (Column)", params.get('Column_Plate')), 
-                 ("검출기 (Detector)", params.get('Detection')), ("이동상 (Mobile Phase)", f"A: {params.get('Condition_A')}\nB: {params.get('Condition_B')}")]:
-        r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v if v else "N/A"
+    for k, v in [("기기", safe_get('Instrument')), ("컬럼", safe_get('Column_Plate')), 
+                 ("조건", f"A: {safe_get('Condition_A')}\nB: {safe_get('Condition_B')}"), ("검출기", safe_get('Detection'))]:
+        r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v
     
-    doc.add_paragraph("\n■ 시약 및 표준품 (Reagents & Standards)")
-    doc.add_paragraph(f"• 표준품: {params.get('Ref_Standard_Info', 'N/A')}")
-    doc.add_paragraph(f"• 시약: {params.get('Reagent_List', 'N/A')}")
-
-    # 2-4. 밸리데이션 수행 방법 및 기준 (핵심!)
     doc.add_heading('4. 밸리데이션 수행 방법 및 기준 (Procedures & Criteria)', level=1)
-    doc.add_paragraph("각 항목별 상세 수행 방법(Procedure)과 판정 기준(Criteria)은 다음과 같다.")
-    
-    # 상세 테이블 (3열: 항목 | 시험 방법 | 판정 기준)
-    table = doc.add_table(rows=1, cols=3); table.style = 'Table Grid'
-    table.autofit = False
-    table.columns[0].width = Inches(1.2) # 항목
-    table.columns[1].width = Inches(3.5) # 방법
-    table.columns[2].width = Inches(1.8) # 기준
+    table = doc.add_table(rows=1, cols=3); table.style = 'Table Grid'; table.autofit = False
+    table.columns[0].width = Inches(1.2); table.columns[1].width = Inches(3.5); table.columns[2].width = Inches(1.8)
     
     headers = ["항목 (Parameter)", "시험 방법 (Test Procedure)", "판정 기준 (Criteria)"]
-    for i, h in enumerate(headers):
-        c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    for i, h in enumerate(headers): c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
 
-    # 항목별 프로시저 자동 생성 로직 (SOP 수준)
+    # 항목 추가 함수 (안전성 강화)
     def add_row(param_name, procedure, criteria):
-        if criteria and "정보 없음" not in criteria:
+        if criteria and "정보 없음" not in str(criteria):
             r = table.add_row().cells
-            r[0].text = param_name
-            r[1].text = procedure
-            r[2].text = criteria
+            r[0].text = str(param_name)
+            r[1].text = str(procedure)
+            r[2].text = str(criteria)
 
-    # 1. 특이성
-    add_row("특이성\n(Specificity)", 
-            "1) 공시험액(Blank), 위약(Placebo), 표준액, 검체액을 각각 준비한다.\n"
-            "2) 각 용액을 분석하여 주성분 피크 위치에 방해하는 피크가 있는지 확인한다.", 
-            params.get('Detail_Specificity'))
-    
-    # 2. 직선성 (3회 반복 반영)
-    add_row("직선성\n(Linearity)", 
-            f"1) 기준 농도({params.get('Target_Conc', '100')} {params.get('Unit', '%')})를 중심으로 80 ~ 120% 범위 내에서 최소 5개 농도(예: 80, 90, 100, 110, 120%)를 조제한다.\n"
-            "2) 각 농도별로 3회 반복 주입(Triplicate Injection)하여 분석한다.\n"
-            "3) 농도(X)와 반응값(Y)에 대한 회귀분석을 수행하여 결정계수(R²)를 산출한다.", 
-            params.get('Detail_Linearity'))
-    
-    # 3. 범위 (구체적 제조)
-    add_row("범위\n(Range)",
-            "직선성, 정확성, 정밀성이 모두 적합한 것으로 확인된 최저 및 최고 농도 구간으로 설정한다.",
-            params.get('Detail_Range'))
+    target_conc = safe_get('Target_Conc', '100')
+    unit = safe_get('Unit', '%')
 
-    # 4. 정확성 (3농도 x 3회)
-    add_row("정확성\n(Accuracy)",
-            "1) 기준 농도의 80%, 100%, 120% 수준으로 검체(Spiked Sample)를 조제한다.\n"
-            "2) 각 농도 수준별로 3회씩 반복 조제하여 분석한다 (총 9회).\n"
-            "3) 각 결과의 회수율(Recovery %)을 계산한다.",
-            params.get('Detail_Accuracy'))
+    add_row("특이성\n(Specificity)", "공시험액, 표준액, 검체액을 분석하여 방해 피크 유무 확인", safe_get('Detail_Specificity'))
+    add_row("직선성\n(Linearity)", f"기준 농도({target_conc} {unit}) 중심 80~120% 범위 내 5개 농도 조제, 각 3회 반복 주입", safe_get('Detail_Linearity'))
+    add_row("범위\n(Range)", "직선성, 정확성, 정밀성이 확보된 구간", safe_get('Detail_Range'))
+    add_row("정확성\n(Accuracy)", "80%, 100%, 120% 수준으로 각 3회 반복 조제하여 회수율 평가", safe_get('Detail_Accuracy'))
+    add_row("반복성\n(Repeatability)", f"기준 농도({target_conc} {unit}) 6회 반복 조제 및 분석", safe_get('Detail_Precision'))
+    add_row("실험실내 정밀성\n(Int. Precision)", "다른 날짜 또는 시험자가 반복성 시험 수행 (n=6)", safe_get('Detail_Inter_Precision'))
+    add_row("LOD / LOQ", "S/N 비 3:1 (LOD), 10:1 (LOQ) 확인", f"LOD: {safe_get('Detail_LOD')} / LOQ: {safe_get('Detail_LOQ')}")
+    add_row("완건성\n(Robustness)", f"분석 조건 변경: {safe_get('Detail_Robustness')}", "SST 만족 및 결과 차이 없음")
 
-    # 5. 정밀성 (반복성)
-    add_row("반복성\n(Repeatability)",
-            f"1) 기준 농도({params.get('Target_Conc', '100')} {params.get('Unit', '%')})의 검체를 6회 반복 조제한다.\n"
-            "2) 동일 조건 하에서 연속적으로 분석한다.\n"
-            "3) 6회 결과의 평균 및 상대표준편차(RSD)를 계산한다.",
-            params.get('Detail_Precision'))
-
-    # 6. 실험실내 정밀성
-    add_row("실험실내 정밀성\n(Int. Precision)",
-            "1) 시험일(Day) 또는 시험자(Analyst)를 변경하여 반복성 시험을 동일하게 수행한다 (n=6).\n"
-            "2) 첫 번째 결과(Day 1)와 두 번째 결과(Day 2)를 통합하여 전체 RSD 및 두 그룹 간 차이를 평가한다.",
-            params.get('Detail_Inter_Precision'))
-
-    # 7. 완건성
-    add_row("완건성\n(Robustness)",
-            "다음의 분석 조건을 의도적으로 소폭 변경하여 시스템 적합성(SST) 및 결과에 미치는 영향을 평가한다.\n"
-            f"- 변경 조건: {params.get('Detail_Robustness', '유속, 온도 등')}",
-            "시스템 적합성 기준 만족 및 결과값의 유의한 차이 없음")
-
-    doc.add_paragraph("\n위 절차에 따라 시험을 수행하고, 모든 결과는 시험일지(Logbook)에 기록하며 원본 데이터(Raw Data)를 첨부한다.")
-    
-    # 승인란
     doc.add_paragraph("\n\n")
     table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
-    for i, h in enumerate(["작성 (Prepared by)", "검토 (Reviewed by)", "승인 (Approved by)"]):
-        c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
 
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - 기존 유지 (5탭, 차트, 3회반복)]
+# [Excel 생성 함수 - 안전성 강화]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    # Formats
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center', 'valign':'vcenter'})
     cell = workbook.add_format({'border':1, 'align':'center'}); num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
@@ -281,18 +227,21 @@ def generate_smart_excel(method_name, category, params):
     ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     r = 3
-    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v, cell); r+=1
+    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+1, 0, "Reagent", sub); ws1.merge_range(r+1, 1, r+1, 4, params.get('Ref_Standard_Info', ''), cell)
     ws1.write(r+2, 0, "Prep Method", sub); ws1.merge_range(r+2, 1, r+2, 4, params.get('Preparation_Sample', ''), cell)
 
     target_conc = params.get('Target_Conc')
-    if target_conc:
+    if target_conc is not None:
+        try: target_val_base = float(target_conc)
+        except: target_val_base = 0
+        
         ws2 = workbook.add_worksheet("2. Linearity"); ws2.set_column('A:H', 12)
         unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:H1', f'Linearity: Triplicate Analysis (Target: {target_conc} {unit})', header)
         for c, h in enumerate(["Level", "Rep", f"Conc ({unit})", "Weight", "Vol", "Response (Y)", "Mean (Y)", "RSD (%)"]): ws2.write(2, c, h, sub)
         levels = [80, 90, 100, 110, 120]; row = 3; chart_rows = []
         for level in levels:
-            target_val = float(target_conc) * (level / 100); start_row = row + 1
+            target_val = target_val_base * (level / 100); start_row = row + 1
             for i in range(1, 4):
                 ws2.write_row(row, 0, [f"{level}%", i, target_val, "", 50, ""], cell)
                 if i == 1:
@@ -331,7 +280,7 @@ def generate_smart_excel(method_name, category, params):
     workbook.close(); output.seek(0)
     return output
 
-# [Report 생성 함수 - 기존 유지]
+# [Report 생성 함수]
 def generate_summary_report_gmp(method_name, category, params, user_inputs):
     doc = Document(); set_korean_font(doc); doc.add_heading(f'Validation Summary Report: {method_name}', 0)
     info = doc.add_table(rows=3, cols=2); info.style='Table Grid'
@@ -373,7 +322,6 @@ with col2:
             
             with t1:
                 st.markdown("### 1️⃣ 전략 (VMP) 및 상세 계획서 (Protocol)")
-                st.info("Protocol 다운로드 시, 머리글(Header)에 문서 정보가 포함되며, '시험 방법(Procedure)'에 3회 반복, 5개 농도 등 구체적인 지침이 자동 기술됩니다.")
                 st.dataframe(my_plan[["Method", "Category"]])
                 c1, c2 = st.columns(2)
                 with c1: st.download_button("📥 VMP(종합계획서) 다운로드", generate_vmp_premium(sel_modality, sel_phase, my_plan), "VMP_Master.docx")
