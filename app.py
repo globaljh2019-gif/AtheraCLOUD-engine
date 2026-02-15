@@ -266,14 +266,16 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
 
     # 2. SST Sheet (Fixed: Criteria & Pass Logic)
-    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
-    ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
-    # Added Tailing Factor Criteria Column
-    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing", "Plate Count"], sub)
-    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
-    
+    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:E', 15)
+    ws_sst.merge_range('A1:E1', 'System Suitability Test (n=6)', header)
+    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing"], sub)
+    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", ""], calc)
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
+    ws_sst.write('A12', "Criteria:", sub); ws_sst.write('B12', "RSD ≤ 2.0%", cell)
+    ws_sst.write('C12', "Result:", sub)
+    ws_sst.write_formula('D12', '=IF(AND(B10<=2.0, C10<=2.0), "Pass", "Fail")', pass_fmt)
+    ws_sst.conditional_format('D12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})    
     
     # Explicit Criteria Display
     ws_sst.merge_range('A12:B12', "Criteria (RSD):", sub); ws_sst.write('C12', "≤ 2.0%", cell)
