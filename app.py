@@ -138,48 +138,91 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [NEW] 시약 제조 계산기 엑셀 생성 함수 (별도 다운로드용)
-def generate_calculator_excel(method_name, target_conc, unit, stock_conc, req_vol):
+# [NEW] 통합 시약 제조 레시피 (Master Recipe Excel)
+def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req_vol):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
     # Formats
-    header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
-    sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
+    header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#44546A', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
+    section = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'left'})
+    sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#E7E6E6', 'align':'center'})
     cell = workbook.add_format({'border':1, 'align':'center'}); num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.000', 'align':'center'}) # Green for Result
 
-    ws = workbook.add_worksheet("Calculator")
-    ws.set_column('A:E', 15)
+    ws = workbook.add_worksheet("Master Recipe")
+    ws.set_column('A:A', 25); ws.set_column('B:E', 15)
     
-    ws.merge_range('A1:E1', f'Solution Preparation Calculator: {method_name}', header)
-    
-    # User Inputs (Display)
+    ws.merge_range('A1:E1', f'Validation Solution Preparation: {method_name}', header)
+    ws.write('A2', "Target Conc:", sub); ws.write('B2', target_conc, num); ws.write('C2', unit, cell)
     ws.write('A3', "Stock Conc:", sub); ws.write('B3', stock_conc, num); ws.write('C3', unit, cell)
-    ws.write('A4', "Req Vol (mL):", sub); ws.write('B4', req_vol, num)
-    ws.write('A5', "Target (100%):", sub); ws.write('B5', target_conc, num); ws.write('C5', unit, cell)
+    ws.write('A4', "Prep Vol (mL):", sub); ws.write('B4', req_vol, num)
     
-    # Recipe Table
-    ws.write_row('A7', ["Level (%)", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Check Vol"], sub)
+    row = 6
+    
+    # 1. Linearity Recipe (5 Levels x 3 Reps)
+    ws.merge_range(row, 0, row, 4, "1. 직선성 (Linearity) - 5 Levels x 3 Reps (Total 15 Vials)", section)
+    row += 1
+    ws.write_row(row, 0, ["Sample ID", "Target Conc", "Stock (mL)", "Diluent (mL)", "Total (mL)"], sub)
+    row += 1
     
     levels = [80, 90, 100, 110, 120]
-    for i, level in enumerate(levels):
-        r = 8 + i
+    for level in levels:
         t_val = float(target_conc) * (level / 100)
         s_vol = (t_val * float(req_vol)) / float(stock_conc)
         d_vol = float(req_vol) - s_vol
         
-        ws.write(r, 0, f"{level}%", cell)
-        ws.write(r, 1, t_val, num)
-        ws.write(r, 2, s_vol, auto) # Calculated Stock
-        ws.write(r, 3, d_vol, auto) # Calculated Diluent
-        ws.write(r, 4, s_vol + d_vol, num)
+        for rep in range(1, 4): # 3 Reps
+            ws.write(row, 0, f"Lin-{level}%-{rep}", cell)
+            ws.write(row, 1, t_val, num)
+            ws.write(row, 2, s_vol, auto)
+            ws.write(row, 3, d_vol, auto)
+            ws.write(row, 4, float(req_vol), num)
+            row += 1
+    row += 2
 
-    ws.merge_range('A15:E15', "※ 이 시트를 인쇄하여 실험 노트에 부착하십시오.", cell)
+    # 2. Accuracy Recipe (3 Levels x 3 Reps)
+    ws.merge_range(row, 0, row, 4, "2. 정확성 (Accuracy) - 3 Levels x 3 Reps (Total 9 Vials)", section)
+    row += 1
+    ws.write_row(row, 0, ["Sample ID", "Target Conc", "Stock (mL)", "Diluent (mL)", "Total (mL)"], sub)
+    row += 1
     
+    acc_levels = [80, 100, 120]
+    for level in acc_levels:
+        t_val = float(target_conc) * (level / 100)
+        s_vol = (t_val * float(req_vol)) / float(stock_conc)
+        d_vol = float(req_vol) - s_vol
+        
+        for rep in range(1, 4):
+            ws.write(row, 0, f"Acc-{level}%-{rep}", cell)
+            ws.write(row, 1, t_val, num)
+            ws.write(row, 2, s_vol, auto)
+            ws.write(row, 3, d_vol, auto)
+            ws.write(row, 4, float(req_vol), num)
+            row += 1
+    row += 2
+
+    # 3. Precision Recipe (1 Level x 6 Reps)
+    ws.merge_range(row, 0, row, 4, "3. 정밀성 (Repeatability) - 100% Level x 6 Reps (Total 6 Vials)", section)
+    row += 1
+    ws.write_row(row, 0, ["Sample ID", "Target Conc", "Stock (mL)", "Diluent (mL)", "Total (mL)"], sub)
+    row += 1
+    
+    t_val = float(target_conc) # 100%
+    s_vol = (t_val * float(req_vol)) / float(stock_conc)
+    d_vol = float(req_vol) - s_vol
+    
+    for rep in range(1, 7): # 6 Reps
+        ws.write(row, 0, f"Prec-100%-{rep}", cell)
+        ws.write(row, 1, t_val, num)
+        ws.write(row, 2, s_vol, auto)
+        ws.write(row, 3, d_vol, auto)
+        ws.write(row, 4, float(req_vol), num)
+        row += 1
+
     workbook.close(); output.seek(0)
     return output
 
-# [PROTOCOL 업그레이드: 계산된 레시피를 표로 삽입]
+# [PROTOCOL 업그레이드: 섹션별 상세 제조법 삽입]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None):
     doc = Document(); set_korean_font(doc)
     
@@ -194,22 +237,19 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
 
-    # 제목
     title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0); title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER; doc.add_paragraph()
 
-    # 1~3 섹션 (기존 동일)
+    # 1~4 섹션 (기존 동일)
     doc.add_heading('1. 목적 (Objective)', level=1)
     doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 수행 방법 및 판정 기준을 기술한다.")
-    doc.add_heading('2. 근거 (Reference)', level=1)
-    doc.add_paragraph("• ICH Q2(R2) & MFDS 가이드라인")
+    doc.add_heading('2. 근거 (Reference)', level=1); doc.add_paragraph("• ICH Q2(R2) & MFDS 가이드라인")
     doc.add_heading('3. 기기 및 시약', level=1)
     t_cond = doc.add_table(rows=0, cols=2); t_cond.style = 'Table Grid'
     for k, v in [("기기", safe_get('Instrument')), ("컬럼", safe_get('Column_Plate')), 
                  ("조건", f"A: {safe_get('Condition_A')}\nB: {safe_get('Condition_B')}"), ("검출기", safe_get('Detection'))]:
         r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v
     
-    # 4. 판정 기준 (표에는 기준만)
     doc.add_heading('4. 밸리데이션 항목 및 기준 (Criteria)', level=1)
     table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
     headers = ["항목 (Parameter)", "판정 기준 (Criteria)"]
@@ -219,42 +259,52 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     for k, v in items:
         if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text=k; r[1].text=v
 
-    # 5. 상세 시험 방법 (Actionable SOP Style)
+    # 5. 상세 시험 방법 (서술형 - SOP 스타일)
     doc.add_heading('5. 상세 시험 방법 (Test Procedures)', level=1)
     
     target_conc = safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
     
-    doc.add_heading('5.1 용액 조제 (Preparation)', level=2)
-    doc.add_paragraph(f"1) 표준 모액(Stock Solution): 농도 {stock_conc if stock_conc else '[입력필요]'} {unit} 용액을 준비한다.")
+    # 5.1 용액 조제 (공통)
+    doc.add_heading('5.1 표준 모액 조제 (Stock Preparation)', level=2)
+    doc.add_paragraph(f"1) 표준품 적당량을 정밀히 달아 희석액으로 녹여 농도 {stock_conc if stock_conc else '[입력필요]'} {unit} 용액을 만든다.")
+
+    # 5.2 직선성
+    doc.add_heading('5.2 직선성 (Linearity)', level=2)
+    doc.add_paragraph(f"기준 농도 {target_conc} {unit}를 중심으로 80 ~ 120% 범위 내 5개 농도를 아래 표와 같이 조제한다. 각 농도별로 3회씩 독립적으로 조제한다 (총 15개).")
     
-    # [핵심] 사용자가 입력값을 넣었으면, 계산된 표를 문서에 박아버림
     if stock_conc and req_vol:
-        doc.add_paragraph("2) 직선성 표준액 조제표 (Dilution Scheme): 아래 표에 따라 희석한다.")
-        t_recipe = doc.add_table(rows=1, cols=4); t_recipe.style = 'Table Grid'
-        rh = ["Level (%)", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)"]
-        for i, h in enumerate(rh): c = t_recipe.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-        
-        levels = [80, 90, 100, 110, 120]
-        for level in levels:
+        t_lin = doc.add_table(rows=1, cols=4); t_lin.style = 'Table Grid'
+        for i, h in enumerate(["Level", "Target", "Stock (mL)", "Diluent (mL)"]): c = t_lin.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+        for level in [80, 90, 100, 110, 120]:
             t_val = float(target_conc) * (level/100)
             s_vol = (t_val * float(req_vol)) / float(stock_conc)
             d_vol = float(req_vol) - s_vol
-            r = t_recipe.add_row().cells
-            r[0].text = f"{level}%"
-            r[1].text = f"{t_val:.2f}"
-            r[2].text = f"{s_vol:.3f}" # 소수점 3자리까지 상세하게
-            r[3].text = f"{d_vol:.3f}"
-    else:
-        doc.add_paragraph("2) 직선성 표준액 조제: 기준 농도의 80 ~ 120% 범위 내에서 5개 농도를 단계적으로 희석하여 조제한다.")
+            r = t_lin.add_row().cells; r[0].text=f"{level}%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
+    
+    doc.add_paragraph("\n조제된 15개 시료를 HPLC에 주입하여 분석한다.")
 
-    doc.add_heading('5.2 직선성 시험 (Linearity)', level=2)
-    doc.add_paragraph("1) 위에서 조제한 5개 농도의 표준액을 준비한다.")
-    doc.add_paragraph("2) 각 농도별로 3회 반복 주입(Triplicate Injection)한다.")
-    doc.add_paragraph("3) 크로마토그램의 면적을 구하여 검량선을 작성하고 R²를 평가한다.")
+    # 5.3 정확성
+    doc.add_heading('5.3 정확성 (Accuracy)', level=2)
+    doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 각 3회씩 독립적으로 조제한다 (총 9개).")
+    if stock_conc and req_vol:
+        t_acc = doc.add_table(rows=1, cols=4); t_acc.style = 'Table Grid'
+        for i, h in enumerate(["Level", "Target", "Stock (mL)", "Diluent (mL)"]): c = t_acc.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+        for level in [80, 100, 120]:
+            t_val = float(target_conc) * (level/100)
+            s_vol = (t_val * float(req_vol)) / float(stock_conc)
+            d_vol = float(req_vol) - s_vol
+            r = t_acc.add_row().cells; r[0].text=f"{level}%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
 
-    doc.add_heading('5.3 정밀성 및 정확성', level=2)
-    doc.add_paragraph(f"1) 정밀성: 기준 농도({target_conc} {unit})를 6회 반복 조제하여 분석한다.")
-    doc.add_paragraph("2) 정확성: 80%, 100%, 120% 농도로 각 3회씩 조제하여 회수율을 구한다.")
+    # 5.4 정밀성
+    doc.add_heading('5.4 정밀성 (Repeatability)', level=2)
+    doc.add_paragraph(f"기준 농도(100%)로 6회 독립적으로 조제한다 (총 6개).")
+    if stock_conc and req_vol:
+        t_prec = doc.add_table(rows=2, cols=4); t_prec.style = 'Table Grid'
+        for i, h in enumerate(["Level", "Target", "Stock (mL)", "Diluent (mL)"]): c = t_prec.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+        t_val = float(target_conc)
+        s_vol = (t_val * float(req_vol)) / float(stock_conc)
+        d_vol = float(req_vol) - s_vol
+        r = t_prec.rows[1].cells; r[0].text="100%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
 
     doc.add_paragraph("\n\n")
     table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
@@ -264,7 +314,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - Logbook 전용]
+# [Excel 생성 함수 - Logbook 전용 (기존 유지)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
@@ -328,6 +378,24 @@ def generate_smart_excel(method_name, category, params):
     workbook.close(); output.seek(0)
     return output
 
+# [Report 생성 함수]
+def generate_summary_report_gmp(method_name, category, params, user_inputs):
+    doc = Document(); set_korean_font(doc); doc.add_heading(f'Validation Summary Report: {method_name}', 0)
+    info = doc.add_table(rows=3, cols=2); info.style='Table Grid'
+    d = [("Category", category), ("Lot/Date", f"{user_inputs['lot_no']} / {user_inputs['date']}"), ("Analyst", user_inputs['analyst'])]
+    for i, (k, v) in enumerate(d): info.rows[i].cells[0].text=k; info.rows[i].cells[1].text=str(v)
+    doc.add_heading('1. 상세 결과 (Results)', level=1)
+    table = doc.add_table(rows=1, cols=3); table.style='Table Grid'
+    table.rows[0].cells[0].text="항목"; table.rows[0].cells[1].text="기준"; table.rows[0].cells[2].text="결과"
+    check_items = [("특이성", params.get('Detail_Specificity'), "Pass"), ("직선성 (R²)", params.get('Detail_Linearity'), "Pass (See Chart)"),
+                   ("정밀성", params.get('Detail_Precision'), user_inputs.get('main_result', 'N/A')),
+                   ("실험실내 정밀성", params.get('Detail_Inter_Precision'), "Pass"), ("완건성", params.get('Detail_Robustness'), "Pass")]
+    for k, c, r in check_items:
+        if c: table.add_row().cells[0].text=k; table.rows[-1].cells[1].text=c; table.rows[-1].cells[2].text=r
+    doc.add_heading('2. 결론', level=1); doc.add_paragraph("본 시험법은 모든 밸리데이션 항목을 만족하므로 적합함.")
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    return doc_io
+
 # ---------------------------------------------------------
 # 4. 메인 UI
 # ---------------------------------------------------------
@@ -362,7 +430,7 @@ with col2:
                     
                     if sel_p:
                         # [NEW] 입력란: Stock 농도와 필요량 입력
-                        st.info("👇 여기에 시약 정보를 입력하면 [계산기]와 [계획서]에 자동 반영됩니다.")
+                        st.info("👇 여기에 시약 정보를 입력하면 [통합 레시피 엑셀]과 [계획서]에 자동 반영됩니다.")
                         cc1, cc2 = st.columns(2)
                         with cc1: stock_input = st.number_input("내 Stock 농도 (mg/mL 등):", min_value=0.0, step=0.1, format="%.2f")
                         with cc2: vol_input = st.number_input("필요한 양 (mL):", min_value=1.0, value=5.0, step=1.0)
@@ -371,10 +439,10 @@ with col2:
                         target_conc_val = params_p.get('Target_Conc', 0)
                         unit_val = params_p.get('Unit', '')
 
-                        # 다운로드 버튼 1: 계산기 엑셀
+                        # 다운로드 버튼 1: 별도 계산기 파일 (Master Recipe)
                         if stock_input > 0:
-                            calc_excel = generate_calculator_excel(sel_p, target_conc_val, unit_val, stock_input, vol_input)
-                            st.download_button("🧮 시약 제조 계산기 (Excel) 다운로드", calc_excel, f"Calculator_{sel_p}.xlsx")
+                            calc_excel = generate_master_recipe_excel(sel_p, target_conc_val, unit_val, stock_input, vol_input)
+                            st.download_button("🧮 시약 제조 계산기 (Master Recipe) 다운로드", calc_excel, f"Master_Recipe_{sel_p}.xlsx")
                         
                         # 다운로드 버튼 2: 상세 계획서 (워드)
                         doc_proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_input if stock_input > 0 else None, vol_input)
