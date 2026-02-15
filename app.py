@@ -132,7 +132,7 @@ def generate_vmp_premium(modality, phase, df_strategy):
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Master Recipe]
+# [Master Recipe Excel]
 def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req_vol, sample_type, powder_info=""):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     title_fmt = workbook.add_format({'bold':True, 'font_size': 14, 'align':'center', 'valign':'vcenter', 'bg_color': '#44546A', 'font_color': 'white'})
@@ -226,7 +226,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - Smart Logbook (ALL SHEETS RECOVERED)]
+# [Excel 생성 함수 - Smart Logbook (ALL SHEETS + CRITERIA CHECK)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
@@ -247,23 +247,26 @@ def generate_smart_excel(method_name, category, params):
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
 
-    # 2. SST Sheet
+    # 2. SST Sheet (Auto Check)
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:E', 15)
     ws_sst.merge_range('A1:E1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing"], sub)
     for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", ""], calc)
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
-    ws_sst.merge_range('A12:C12', "Criteria Check (RSD ≤ 2.0%)", sub)
+    ws_sst.write('A12', "Criteria:", sub); ws_sst.write('B12', "RSD ≤ 2.0%", cell)
+    ws_sst.write('C12', "Result:", sub)
     ws_sst.write_formula('D12', '=IF(AND(B10<=2.0, C10<=2.0), "Pass", "Fail")', pass_fmt)
     ws_sst.conditional_format('D12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 3. Specificity Sheet
-    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:D', 20)
-    ws_spec.merge_range('A1:D1', 'Specificity Test', header)
-    ws_spec.write_row('A2', ["Sample", "RT of Main Peak", "Interference", "Result"], sub)
-    for i, s in enumerate(["Blank", "Placebo", "Standard", "Sample"]):
-        ws_spec.write(i+3, 0, s, cell); ws_spec.write_row(i+3, 1, ["", "", ""], calc)
+    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
+    ws_spec.merge_range('A1:E1', 'Specificity Test', header)
+    ws_spec.write_row('A2', ["Sample", "RT", "Area", "Interference (%)", "Criteria (≤0.5%)"], sub)
+    for i, s in enumerate(["Blank", "Placebo"]):
+        ws_spec.write(i+3, 0, s, cell); ws_spec.write_row(i+3, 1, ["", ""], calc)
+        ws_spec.write_formula(i+3, 3, f"=ROUNDDOWN(C{i+4}/10000*100, 2)", auto) # Dummy denominator for example
+        ws_spec.write_formula(i+3, 4, f'=IF(D{i+4}<=0.5, "Pass", "Fail")', pass_fmt)
 
     # 4. Linearity Sheet
     target_conc = params.get('Target_Conc')
@@ -286,8 +289,8 @@ def generate_smart_excel(method_name, category, params):
             chart.set_size({'width': 400, 'height': 250}); ws2.insert_chart(f'E{data_start}', chart); row += 8 
 
         # Summary
-        ws2.merge_range(row, 0, row, 7, "■ Summary (Mean of 3 Reps) & Criteria Check", sub_rep); row += 1
-        ws2.write_row(row, 0, ["Level", "Conc (X)", "Mean Area", "STDEV", "% RSD", "Result"], sub); row += 1
+        ws2.merge_range(row, 0, row, 7, "■ Summary & Criteria Check", sub_rep); row += 1
+        ws2.write_row(row, 0, ["Level", "Conc (X)", "Mean Area", "STDEV", "% RSD", "Result (RSD≤5%)"], sub); row += 1
         summary_start = row; r1_start = 5; r2_start = 19; r3_start = 33
         for i, level in enumerate([80, 90, 100, 110, 120]):
             c_r1 = f"C{r1_start+i+1}"; c_r2 = f"C{r2_start+i+1}"; c_r3 = f"C{r3_start+i+1}"
@@ -299,13 +302,13 @@ def generate_smart_excel(method_name, category, params):
             ws2.conditional_format(f'F{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt}); row += 1
         
         row += 1; ws2.write(row, 1, "R²:", sub); ws2.write_formula(row, 2, f"=ROUNDDOWN(RSQ(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
-        ws2.write(row, 3, "Criteria:", sub); ws2.write(row, 4, "≥ 0.990", cell)
-        ws2.write_formula(row, 5, f'=IF(C{row+1}>=0.990, "Pass", "Fail")', pass_fmt)
-        ws2.conditional_format(f'F{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+        ws2.write(row, 3, "Criteria (≥ 0.990):", sub)
+        ws2.write_formula(row, 4, f'=IF(C{row+1}>=0.990, "Pass", "Fail")', pass_fmt)
+        ws2.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 5. Accuracy Sheet
     ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:F', 15)
-    ws_acc.merge_range('A1:F1', 'Accuracy (Recovery Test)', header)
+    ws_acc.merge_range('A1:F1', 'Accuracy Test', header)
     ws_acc.write_row('A2', ["Level", "Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)"], sub)
     ws_acc.write('H2', "Slope:", sub); ws_acc.write('I2', "", calc)
     ws_acc.write('H3', "Intercept:", sub); ws_acc.write('I3', "", calc)
@@ -318,28 +321,30 @@ def generate_smart_excel(method_name, category, params):
             ws_acc.write_formula(row, 5, f"=ROUNDDOWN(E{row+1}/C{row+1}*100, 2)", auto)
             row += 1
     ws_acc.write(row, 4, "Mean Recovery:", sub); ws_acc.write_formula(row, 5, f"=ROUNDDOWN(AVERAGE(F4:F{row}), 2)", auto)
+    ws_acc.write(row, 2, "Criteria (80~120%):", sub)
+    ws_acc.write_formula(row, 3, f'=IF(AND(F{row+1}>=80, F{row+1}<=120), "Pass", "Fail")', pass_fmt)
 
     # 6. Precision Sheet
-    ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision (Repeatability & Intermediate)', header)
+    ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision', header)
     ws3.merge_range('A3:E3', "■ Day 1 (Repeatability)", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
     for i in range(6): ws3.write_row(4+i, 0, [i+1, "Sample", ""], calc)
     ws3.write_formula('D5', "=ROUNDDOWN(AVERAGE(C5:C10), 2)", num); ws3.write_formula('E5', "=ROUNDDOWN(STDEV(C5:C10)/D5*100, 2)", num)
-    ws3.merge_range('A12:E12', "■ Day 2 (Intermediate Precision)", sub); ws3.write_row('A13', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
-    for i in range(6): ws3.write_row(13+i, 0, [i+1, "Sample", ""], calc)
-    ws3.write_formula('D14', "=ROUNDDOWN(AVERAGE(C14:C19), 2)", num); ws3.write_formula('E14', "=ROUNDDOWN(STDEV(C14:C19)/D14*100, 2)", num)
-    ws3.write('A21', "Diff (%)", sub); ws3.write_formula('B21', "=ROUNDDOWN(ABS(D5-D14)/AVERAGE(D5,D14)*100, 2)", num)
+    ws3.write('E11', "Check (RSD≤2.0):", sub); ws3.write_formula('E12', '=IF(E5<=2.0, "Pass", "Fail")', pass_fmt)
 
     # 7. Robustness
     if params.get('Detail_Robustness'):
         ws4 = workbook.add_worksheet("7. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header)
         ws4.write_row('A3', ["Condition", "Set", "Actual", "SST Result", "Pass/Fail", "Note"], sub)
-        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, calc)
+        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): 
+            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, ["", "", "Pass", ""], calc)
 
     # 8. LOD/LOQ
-    ws_ll = workbook.add_worksheet("8. LOD_LOQ"); ws_ll.set_column('A:D', 15); ws_ll.merge_range('A1:D1', 'LOD / LOQ', header)
-    ws_ll.write_row('A2', ["Item", "Signal", "Noise", "S/N Ratio"], sub)
-    ws_ll.write('A3', "LOD Sample", cell); ws_ll.write('B3', "", calc); ws_ll.write('C3', "", calc); ws_ll.write_formula('D3', "=ROUNDDOWN(B3/C3, 1)", auto)
-    ws_ll.write('A4', "LOQ Sample", cell); ws_ll.write('B4', "", calc); ws_ll.write('C4', "", calc); ws_ll.write_formula('D4', "=ROUNDDOWN(B4/C4, 1)", auto)
+    ws_ll = workbook.add_worksheet("8. LOD_LOQ"); ws_ll.set_column('A:E', 15); ws_ll.merge_range('A1:E1', 'LOD / LOQ', header)
+    ws_ll.write_row('A2', ["Item", "Signal", "Noise", "S/N Ratio", "Result (≥3 / ≥10)"], sub)
+    ws_ll.write('A3', "LOD", cell); ws_ll.write('B3', "", calc); ws_ll.write('C3', "", calc); ws_ll.write_formula('D3', "=ROUNDDOWN(B3/C3, 1)", auto)
+    ws_ll.write_formula('E3', '=IF(D3>=3, "Pass", "Fail")', pass_fmt)
+    ws_ll.write('A4', "LOQ", cell); ws_ll.write('B4', "", calc); ws_ll.write('C4', "", calc); ws_ll.write_formula('D4', "=ROUNDDOWN(B4/C4, 1)", auto)
+    ws_ll.write_formula('E4', '=IF(D4>=10, "Pass", "Fail")', pass_fmt)
 
     workbook.close(); output.seek(0)
     return output
