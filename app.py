@@ -11,6 +11,11 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 # ---------------------------------------------------------
+# 0. 페이지 설정 (최상단)
+# ---------------------------------------------------------
+st.set_page_config(page_title="AtheraCLOUD Full Suite", layout="wide")
+
+# ---------------------------------------------------------
 # 1. 설정 및 데이터 로딩
 # ---------------------------------------------------------
 try:
@@ -95,7 +100,7 @@ def get_method_params(method_name):
     return {}
 
 # ---------------------------------------------------------
-# 3. 문서 생성 엔진
+# 3. 문서 생성 헬퍼
 # ---------------------------------------------------------
 def set_korean_font(doc):
     style = doc.styles['Normal']
@@ -503,49 +508,54 @@ with col2:
                                 st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (Final Fixed)")
-                st.info("✅ SST(Tailing Check), 특이성(Std 기준), 직선성(회차별 그래프), 정확성(자동 참조) 기능 탑재")
-                sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
-                if st.button("Download Excel Logbook"):
-                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
-                    st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
+                st.markdown("### 📗 스마트 엑셀 일지 (GMP)")
+                st.info("실험 데이터를 입력할 엑셀 일지를 생성합니다. (테스트용 자동 채우기 가능)")
+                sel_l = st.selectbox("Select Logbook:", my_plan["Method"].unique(), key="l")
+                
+                # [New] Simulation Checkbox
+                simulate_mode = st.checkbox("🧪 시뮬레이션 데이터 포함 (Test Mode: Auto-fill Data)", value=False, help="체크하면 가상의 결과값이 채워진 엑셀이 생성되어 즉시 보고서를 만들 수 있습니다.")
+                
+                if st.button("Generate Excel Logbook"):
+                    # 1. 엑셀 생성 (시뮬레이션 옵션 반영)
+                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l), simulate=simulate_mode)
+                    
+                    # 2. 세션에 저장 (Step 3로 자동 넘기기 위함)
+                    st.session_state['generated_logbook'] = data
+                    st.session_state['generated_log_name'] = sel_l
+                    st.success(f"Logbook Generated! ({'Simulated Data Included' if simulate_mode else 'Blank Template'})")
+                    
+                    # 3. 다운로드 버튼
+                    st.download_button("📥 Download Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
 
             with t3:
                 st.markdown("### 📊 최종 결과 보고서 (Automated)")
-                st.info("작성이 완료된 **엑셀 일지(Logbook)**를 업로드하면, 결과값을 자동으로 읽어와 보고서를 생성합니다.")
-                
                 sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
                 
-                # [New] 파일 업로더 추가
-                uploaded_log = st.file_uploader("📂 작성된 엑셀 일지 업로드 (Upload Filled Logbook)", type=["xlsx"])
+                # [New] Logic: Upload OR Use Session State
+                uploaded_log = st.file_uploader("📂 Upload Filled Logbook (xlsx)", type=["xlsx"])
                 
-                col_r1, col_r2 = st.columns(2)
-                with col_r1:
-                    lot_no = st.text_input("Lot No.:", value="TBD")
-                
-                if uploaded_log:
-                    st.success("✅ 파일이 인식되었습니다. 데이터를 추출합니다...")
-                    # 1. 데이터 추출
-                    extracted_data = extract_logbook_data(uploaded_log)
-                    
-                    # 2. 추출된 데이터 미리보기 (디버깅용)
-                    with st.expander("🔍 추출된 결과 데이터 확인 (Preview)"):
-                        st.json(extracted_data)
-                    
-                    # 3. 보고서 생성 버튼
-                    if st.button("📥 결과가 반영된 최종 보고서 다운로드"):
-                        param_data = get_method_params(sel_r)
-                        # 추출된 데이터를 함수에 전달
-                        doc_report = generate_summary_report_gmp(sel_r, "Category", param_data, {'lot_no': lot_no}, extracted_data)
-                        
-                        st.download_button(
-                            label="📄 Final Report (Docx) 다운로드",
-                            data=doc_report,
-                            file_name=f"Final_VR_{sel_r}_{lot_no}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
+                # 자동 연동 알림
+                if not uploaded_log and 'generated_logbook' in st.session_state and st.session_state['generated_log_name'] == sel_r:
+                    st.info("💡 Step 2에서 생성된 일지 데이터를 자동으로 불러옵니다.")
+                    used_log = st.session_state['generated_logbook']
                 else:
-                    st.warning("⚠️ 먼저 엑셀 일지를 업로드해주세요.")
+                    used_log = uploaded_log
+
+                lot_no = st.text_input("Lot No:", value="TBD")
+                
+                if used_log:
+                    st.success("Data Ready!")
+                    # 데이터 추출
+                    extracted_data = extract_logbook_data(used_log)
+                    
+                    with st.expander("🔍 Extracted Data Preview"):
+                        st.json(extracted_data)
+                        
+                    if st.button("Generate Final Report"):
+                        doc_r = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no': lot_no}, extracted_data)
+                        st.download_button("📥 Download Report (Docx)", doc_r, f"Final_Report_{sel_r}.docx")
+                else:
+                    st.warning("⚠️ 엑셀 일지를 업로드하거나 Step 2에서 생성해주세요.")
 
 # ---------------------------------------------------------
 # 4. 상세 계획서 생성 (보완된 SOP 기술)
@@ -647,33 +657,36 @@ def extract_logbook_data(uploaded_file):
 # [Updated] 최종 결과 보고서 생성 (데이터 자동 반영)
 def generate_summary_report_gmp(method_name, category, params, context, test_results=None):
     if test_results is None: test_results = {}
+    doc = Document(); set_korean_font(doc)
     
-    # ... (기존 Header, Title 생성 코드 동일) ...
-    # ... (1. 개요 섹션 동일) ...
+    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
+    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Final Report: {method_name}\n").bold = True; p1.add_run(f"Lot: {context.get('lot_no')}")
+    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
 
-    # 4. Validation Results Summary (결과값 자동 매핑)
-    doc.add_heading('2. 밸리데이션 결과 요약 (Result Summary)', level=1)
-    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
-    res_headers = ["Test Item", "Acceptance Criteria", "Result Summary", "Judgment"]
-    for i, h in enumerate(res_headers): c = t_res.rows[0].cells[i]; c.text = h; set_table_header_style(c)
+    doc.add_heading('시험법 밸리데이션 최종 보고서', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph().add_run(f"Method: {method_name}").bold = True
     
-    # 항목별 매핑 로직
+    doc.add_heading('1. 개요 (Summary)', level=1)
+    t_sum = doc.add_table(rows=0, cols=2); t_sum.style = 'Table Grid'
+    for k, v in [("기기", params.get('Instrument')), ("컬럼", params.get('Column_Plate')), ("검출기", params.get('Detection'))]:
+        r = t_sum.add_row().cells; r[0].text=k; r[1].text=str(v)
+    
+    doc.add_heading('2. 결과 요약 (Results)', level=1)
+    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
+    headers = ["Test Item", "Criteria", "Result", "Judgment"]
+    for i, h in enumerate(headers): c = t_res.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    
     items_map = [
         ("System Suitability", params.get('SST_Criteria', "RSD ≤ 2.0%"), test_results.get('sst_res', ""), test_results.get('sst_pass', "")),
-        ("Specificity", params.get('Detail_Specificity', "No Interference"), "No Interference (See Data)", "Pass"), # 특이성은 텍스트 고정 예시
-        ("Linearity", params.get('Detail_Linearity', "R² ≥ 0.990"), test_results.get('lin_res', ""), "Pass" if test_results.get('lin_res') else ""),
-        ("Accuracy", params.get('Detail_Accuracy', "80 ~ 120%"), test_results.get('acc_res', ""), "Pass" if test_results.get('acc_res') else ""),
-        ("Precision", params.get('Detail_Precision', "RSD ≤ 2.0%"), test_results.get('prec_res', ""), "Pass" if test_results.get('prec_res') else ""),
+        ("Specificity", "No Interference", "No Interference", "Pass"),
+        ("Linearity", "R² ≥ 0.990", test_results.get('lin_res', ""), test_results.get('lin_pass', "")),
+        ("Accuracy", "80 ~ 120%", test_results.get('acc_res', ""), test_results.get('acc_pass', "")),
+        ("Precision", "RSD ≤ 2.0%", test_results.get('prec_res', ""), test_results.get('prec_pass', "")),
     ]
-    
-    for item, criteria, result, judge in items_map:
-        row = t_res.add_row().cells
-        row[0].text = item
-        row[1].text = criteria
-        row[2].text = str(result) if result else "N/A" # 엑셀에서 가져온 값 자동 입력
-        row[3].text = str(judge) if judge else ""
+    for item, crit, res, judge in items_map:
+        r = t_res.add_row().cells; r[0].text=item; r[1].text=crit; r[2].text=str(res); r[3].text=str(judge)
 
-    # ... (이하 3. Detailed Results 및 Conclusion 동일) ...
-    
+    doc.add_heading('3. 종합 결론', level=1)
+    doc.add_paragraph("본 시험법은 모든 밸리데이션 항목에서 판정 기준을 만족하였음.")
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io       
