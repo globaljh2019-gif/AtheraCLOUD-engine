@@ -520,3 +520,38 @@ with col2:
                     if st.form_submit_button("Generate Report"):
                         doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
                         st.download_button("📥 Report", doc, "Report.docx")
+
+# ---------------------------------------------------------
+# 4. 상세 계획서 생성 (보완된 SOP 기술)
+# ---------------------------------------------------------
+def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
+    doc = Document(); set_korean_font(doc)
+    def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
+    target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
+    
+    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
+    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
+    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+    
+    doc.add_heading(f'밸리데이션 상세 계획서 ({method_name})', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_heading('1. 목적 및 범위', level=1); doc.add_paragraph("본 시험법의 직선성, 정확성, 정밀성 등을 검증하여 의약품 품질 관리의 적합성을 보증한다.")
+    
+    doc.add_heading('2. 기기 및 시약', level=1); t_cond = doc.add_table(rows=4, cols=2); t_cond.style = 'Table Grid'
+    conds = [("시험 기기", safe_get('Instrument')), ("컬럼 정보", safe_get('Column_Plate')), ("검출기", safe_get('Detection')), ("SST 기준", f"RSD ≤ 2.0%, Tailing ≤ 2.0")]
+    for i, (k, v) in enumerate(conds): t_cond.rows[i].cells[0].text=k; t_cond.rows[i].cells[1].text=v
+    
+    doc.add_heading('3. 상세 조제 방법', level=1)
+    doc.add_heading('3.1 공시험액(Blank) 및 위약(Placebo)', level=2); doc.add_paragraph("1) Blank: 주성분을 제외한 희석액을 그대로 사용한다.\n2) Placebo: 주성분을 제외한 모든 부형제를 처방 비율대로 혼합하여 조제한다.")
+    doc.add_heading('3.2 표준액 및 검액 조제', level=2); doc.add_paragraph(f"1) Master Recipe 및 시험일지의 보정 계수(Correction Factor)를 확인하여 농도 {target_conc} {unit} 수준이 되도록 정밀 조제한다.")
+    
+    doc.add_heading('4. 시험 항목 및 평가 방법', level=1)
+    doc.add_heading('4.1 특이성(Specificity)', level=2); doc.add_paragraph("Blank와 Placebo를 주입하여 주성분 RT 위치에서의 간섭 피크 면적이 표준액의 0.5% 이하인지 확인한다.")
+    doc.add_heading('4.2 LOD 및 LOQ', level=2); doc.add_paragraph("S/N비(Signal to Noise)를 측정한다. LOD는 3:1 이상, LOQ는 10:1 이상이어야 하며, LOQ 농도에서의 정밀성(RSD)을 추가로 평가할 수 있다.")
+    
+    doc.add_paragraph("\n\n"); table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
+    for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
+    for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
+    
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    return doc_io
