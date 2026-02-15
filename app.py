@@ -227,6 +227,105 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
+# ---------------------------------------------------------
+# [New] 최종 결과 보고서 생성 (Pre-filled Template)
+# ---------------------------------------------------------
+def generate_summary_report_gmp(method_name, category, params, context):
+    doc = Document(); set_korean_font(doc)
+    
+    # 1. Header Information
+    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
+    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]
+    p1.add_run(f"Final Report: {method_name}\n").bold = True
+    p1.add_run(f"Lot No.: {context.get('lot_no', 'N/A')}")
+    
+    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}\nDoc No.: VR-{method_name[:3]}-001")
+
+    # 2. Title & Approval
+    title = doc.add_heading('시험법 밸리데이션 최종 보고서', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"(Method Validation Final Report for {method_name})").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+
+    table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
+    headers = ["Written By (Analyzed)", "Reviewed By", "Approved By (QA)"]
+    for i, h in enumerate(headers): 
+        c = table_sign.rows[0].cells[i]; c.text = h; set_table_header_style(c)
+    for i in range(3): table_sign.rows[1].cells[i].text = "\n\n(Sign/Date)\n"
+    doc.add_paragraph()
+
+    # 3. Objective & Method Summary (자동 입력됨)
+    doc.add_heading('1. 개요 및 시험 방법 (Summary)', level=1)
+    doc.add_paragraph("본 문서는 해당 시험법의 밸리데이션 결과를 요약하고 적합성을 판정한다.")
+    
+    t_sum = doc.add_table(rows=0, cols=2); t_sum.style = 'Table Grid'
+    summary_data = [
+        ("시험명 (Method)", method_name),
+        ("시험 목적 (Category)", category),
+        ("사용 기기 (Instrument)", params.get('Instrument', 'N/A')),
+        ("컬럼 (Column)", params.get('Column_Plate', 'N/A')),
+        ("검출 조건 (Detection)", params.get('Detection', 'N/A')),
+        ("기준 농도 (Target)", f"{params.get('Target_Conc', '')} {params.get('Unit', '')}")
+    ]
+    for k, v in summary_data:
+        r = t_sum.add_row().cells
+        r[0].text = k; r[0].paragraphs[0].runs[0].bold = True
+        r[1].text = str(v)
+    
+    # 4. Validation Results Summary (기준 자동 입력, 결과란은 공란)
+    doc.add_heading('2. 밸리데이션 결과 요약 (Result Summary)', level=1)
+    doc.add_paragraph("각 항목별 판정 기준 및 결과는 다음과 같다.")
+    
+    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
+    res_headers = ["Test Item", "Acceptance Criteria", "Result Summary", "Pass/Fail"]
+    for i, h in enumerate(res_headers): 
+        c = t_res.rows[0].cells[i]; c.text = h; set_table_header_style(c)
+    
+    # 항목별 기준 불러오기 & 행 추가
+    items_map = [
+        ("System Suitability", params.get('SST_Criteria', "RSD ≤ 2.0%")),
+        ("Specificity", params.get('Detail_Specificity', "No Interference")),
+        ("Linearity", params.get('Detail_Linearity', "R² ≥ 0.990")),
+        ("Accuracy", params.get('Detail_Accuracy', "80 ~ 120%")),
+        ("Precision", params.get('Detail_Precision', "RSD ≤ 2.0%")),
+        ("LOD/LOQ", params.get('Detail_LOD', "S/N ≥ 3, 10"))
+    ]
+    
+    for item, criteria in items_map:
+        if criteria and "정보 없음" not in criteria:
+            row = t_res.add_row().cells
+            row[0].text = item
+            row[1].text = criteria # 기준 자동 입력
+            row[2].text = "" # 결과는 사용자가 엑셀 보고 입력하도록 비워둠
+            row[3].text = "□ Pass  □ Fail"
+
+    # 5. Detailed Results (상세 섹션 생성)
+    doc.add_heading('3. 상세 결과 (Detailed Results)', level=1)
+    doc.add_paragraph("※ 첨부된 엑셀 로우데이터(Raw Data) 및 크로마토그램 참조.")
+
+    # 각 항목별 섹션 자동 생성
+    for item, criteria in items_map:
+        if criteria and "정보 없음" not in criteria:
+            doc.add_heading(f"3.{items_map.index((item,criteria))+1} {item}", level=2)
+            doc.add_paragraph(f"■ Acceptance Criteria: {criteria}")
+            doc.add_paragraph("■ Result:")
+            # 빈 표 삽입 (사용자가 엑셀 표 복붙하기 좋게)
+            t_dummy = doc.add_table(rows=5, cols=3); t_dummy.style = 'Table Grid'
+            t_dummy.rows[0].cells[0].text = "Parameter"
+            t_dummy.rows[0].cells[1].text = "Value"
+            t_dummy.rows[0].cells[2].text = "Note"
+            set_table_header_style(t_dummy.rows[0].cells[0])
+            doc.add_paragraph()
+
+    # 6. Conclusion
+    doc.add_heading('4. 종합 결론 (Conclusion)', level=1)
+    doc.add_paragraph(f"상기 밸리데이션 수행 결과, '{method_name}' 시험법은 설정된 모든 판정 기준을 만족하였으므로 공정서 시험법으로서 적합함을 보증한다.")
+    doc.add_paragraph("\n[ End of Document ]").alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    return doc_io
+
 # [Excel 생성 함수 - Smart Logbook (ACTUAL WEIGHT & CORRECTION LOGIC)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO()
@@ -569,11 +668,28 @@ with col2:
                     st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
             with t3:
-                st.markdown("### 📊 최종 결과 보고서")
-                sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
-                with st.form("rep"):
-                    l = st.text_input("Lot"); d = st.text_input("Date"); a = st.text_input("Analyst")
-                    s = st.text_input("SST"); m = st.text_input("Main Result")
-                    if st.form_submit_button("Generate Report"):
-                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
-                        st.download_button("📥 Report", doc, "Report.docx")
+                st.markdown("### 📊 최종 결과 보고서 (Final Report)")
+                st.info("💡 기기 정보, 분석 조건, 판정 기준이 포함된 **결과 보고서 초안(Draft)**을 생성합니다. 실험 완료 후 엑셀의 결과값을 붙여넣기 하세요.")
+                
+                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
+                
+                # 입력 최소화: Lot 번호 정도만 입력 (선택 사항)
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    lot_no = st.text_input("Lot No. (Optional):", value="TBD")
+                
+                # 버튼 클릭 시 즉시 다운로드
+                if st.button("📥 최종 보고서 초안 다운로드 (Generate Report Docx)"):
+                    # DB에서 파라미터 가져오기
+                    param_data = get_method_params(sel_r)
+                    cat_data = "Unknown Category" # 필요 시 로직 추가
+                    
+                    # 보고서 생성 함수 호출
+                    doc_report = generate_summary_report_gmp(sel_r, cat_data, param_data, {'lot_no': lot_no})
+                    
+                    st.download_button(
+                        label="📄 Word 파일 다운로드",
+                        data=doc_report,
+                        file_name=f"Validation_Report_{sel_r}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
