@@ -249,47 +249,11 @@ def generate_smart_excel(method_name, category, params):
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'}) # Criteria Text
 
     # [1. Info Sheet]
-    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
-    ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    
-    info_rows = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
-    for i, (k, v) in enumerate(info_rows):
-        ws1.write(i+3, 0, k, sub); ws1.merge_range(i+3, 1, i+3, 4, v if v else "", cell)
-
-    ws1.write(8, 0, "Round Rule:", sub); ws1.merge_range(8, 1, 8, 4, "모든 계산값은 소수점 2째자리(농도 3째자리)에서 절사(ROUNDDOWN).", cell)
-    
-    target_conc_val = float(params.get('Target_Conc', 1.0))
-    ws1.write(9, 0, "Target Conc (100%):", sub); ws1.write(9, 1, target_conc_val, calc); ws1.write(9, 2, params.get('Unit', 'mg/mL'), cell)
-    target_conc_ref = "'1. Info'!$B$10"
-
-    ws1.merge_range(10, 0, 10, 4, "■ Standard Preparation & Correction Factor", sub_rep)
-    labels = ["Theoretical Stock (mg/mL):", "Purity (Potency, %):", "Water Content (%):", "Actual Weight (mg):", "Final Volume (mL):"]
-    for i, label in enumerate(labels):
-        ws1.write(11 + i, 0, label, sub)
-        if "Purity" in label: ws1.write(11 + i, 1, 100.0, calc)
-        elif "Water" in label: ws1.write(11 + i, 1, 0.0, calc)
-        else: ws1.write(11 + i, 1, 1.0, calc)
-
-    ws1.write(16, 0, "Actual Stock (mg/mL):", sub)
-    ws1.write_formula(16, 1, '=IF(B16="","",ROUNDDOWN((B15*(B13/100)*((100-B14)/100))/B16, 4))', auto)
-    actual_stock_ref = "'1. Info'!$B$17"
-    ws1.write(17, 0, "Correction Factor:", sub); ws1.write_formula(17, 1, '=IF(OR(B12="",B12=0,B17=""), 1, ROUNDDOWN(B17/B12, 4))', total_fmt)
-    corr_factor_ref = "'1. Info'!$B$18"; theo_stock_ref = "'1. Info'!$B$12"
-
-    # 2. SST Sheet (System Suitability)
-    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
-    ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
-    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
-    for i in range(1, 7):
-        ws_sst.write(i+1, 0, i, cell)
-        # Simulate Data if enabled
-        sim_rt = 5.0 + random.uniform(-0.02, 0.02) if simulate else ""
-        sim_area = (target_conc_val * 10000) + random.uniform(-100, 100) if simulate else ""
-        sim_tail = 1.1 if simulate else ""
-        ws_sst.write_row(i+1, 1, [sim_rt, sim_area, "", sim_tail, ""], calc)
-    
-    ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
-    ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
+    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 20); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
+    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    r = 3; 
+    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
+    ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)    
     
     # 판정 로직: 입력값이 있을 때만 Pass/Fail 표시
     ws_sst.write('D12', "Result:", sub)
@@ -301,6 +265,26 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write('A15', "1) Retention Time & Area RSD ≤ 2.0%")
     ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
 
+    # 2. SST Sheet (Fixed: Criteria & Pass Logic)
+    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
+    ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
+    # Added Tailing Factor Criteria Column
+    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing", "Plate Count"], sub)
+    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
+    
+    ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
+    ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
+    
+    # Explicit Criteria Display
+    ws_sst.merge_range('A12:B12', "Criteria (RSD):", sub); ws_sst.write('C12', "≤ 2.0%", cell)
+    ws_sst.merge_range('A13:B13', "Criteria (Tailing):", sub); ws_sst.write('C13', "≤ 2.0", cell) # Default GMP
+    
+    # Pass/Fail Logic including Tailing (Assuming Tailing in Col E, Mean Tailing at E9 check for individual or mean? Usually check all. Let's check Mean for now or Max)
+    ws_sst.write('D12', "Result:", sub)
+    # Check RSD <= 2.0 AND Max Tailing <= 2.0 (Safe approach)
+    ws_sst.write_formula('E12', '=IF(AND(B10<=2.0, C10<=2.0, MAX(E3:E8)<=2.0), "Pass", "Fail")', pass_fmt)
+    ws_sst.conditional_format('E12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+    
     # 3. Specificity Sheet (보완됨)
     ws_spec = workbook.add_worksheet("3. Specificity")
     ws_spec.set_column('A:E', 20)
@@ -591,71 +575,60 @@ with col2:
     try: criteria_map = get_criteria_map(); df_full = get_strategy_list(criteria_map)
     except: df_full = pd.DataFrame()
 
-    if not df_full.empty:
+    if sel_modality == "mAb" and not df_full.empty:
         my_plan = df_full[(df_full["Modality"] == sel_modality) & (df_full["Phase"] == sel_phase)]
         if not my_plan.empty:
-            t1, t2, t3 = st.tabs(["📑 Step 1: Strategy", "📗 Step 2: Logbook", "📊 Step 3: Report"])
+            t1, t2, t3 = st.tabs(["📑 Step 1: Strategy & Protocol", "📗 Step 2: Excel Logbook", "📊 Step 3: Result Report"])
             
             with t1:
-                st.markdown("### 1️⃣ 전략 및 계획서")
+                st.markdown("### 1️⃣ 전략 (VMP) 및 상세 계획서 (Protocol)")
                 st.dataframe(my_plan[["Method", "Category"]])
-                sel_p = st.selectbox("Select Protocol:", my_plan["Method"].unique())
-                if sel_p:
-                    c1, c2 = st.columns(2)
-                    with c1: stock_in = st.number_input("내 Stock 농도:", min_value=0.0, value=1.0)
-                    with c2: vol_in = st.number_input("목표 조제량(mL):", min_value=1.0, value=10.0)
-                    if st.button("Generate Protocol Package"):
-                        params_p = get_method_params(sel_p)
-                        target_in = float(params_p.get('Target_Conc', 1.0))
-                        
-                        recipe = generate_master_recipe_excel(sel_p, target_in, "mg/mL", stock_in, vol_in, "Liquid")
-                        st.download_button("📥 Master Recipe (Excel)", recipe, f"Recipe_{sel_p}.xlsx")
-                        
-                        proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_in, vol_in, target_in)
-                        st.download_button("📥 Protocol (Docx)", proto, f"Protocol_{sel_p}.docx")
+                c1, c2 = st.columns(2)
+                with c1: st.download_button("📥 VMP(종합계획서) 다운로드", generate_vmp_premium(sel_modality, sel_phase, my_plan), "VMP_Master.docx")
+                with c2:
+                    st.divider()
+                    st.markdown("#### 🧪 시약 제조 및 계획서 생성기")
+                    sel_p = st.selectbox("Protocol:", my_plan["Method"].unique())
+                    if sel_p:
+                        st.info("👇 시료 상태와 농도를 입력하세요. (Target 농도가 100% 기준이 됩니다)")
+                        sample_type = st.radio("시료 타입 (Sample Type):", ["Liquid (액체)", "Powder (파우더)"], horizontal=True)
+                        cc1, cc2 = st.columns(2)
+                        stock_input_val = 0.0; powder_desc = ""
+                        if sample_type == "Liquid (액체)":
+                            with cc1: stock_input_val = st.number_input("내 Stock 농도 (mg/mL 등):", min_value=0.0, step=0.1, format="%.2f")
+                        else: 
+                            with cc1: weight_input = st.number_input("칭량값 (Weight, mg):", min_value=0.0, step=0.1)
+                            with cc2: dil_vol_input = st.number_input("희석 부피 (Vol, mL):", min_value=0.1, value=10.0, step=1.0)
+                            if dil_vol_input > 0:
+                                stock_input_val = weight_input / dil_vol_input
+                                st.caption(f"🧪 계산된 Stock 농도: **{stock_input_val:.2f} mg/mL**")
+                                powder_desc = f"Weigh {weight_input}mg / {dil_vol_input}mL"
+                        params_p = get_method_params(sel_p); db_target = params_p.get('Target_Conc', 0.0)
+                        with cc1: target_input_val = st.number_input("기준 농도 (Target 100%, mg/mL):", min_value=0.001, value=float(db_target) if db_target else 1.0, format="%.3f")
+                        with cc2: vol_input = st.number_input("개별 바이알 조제 목표량 (Target Vol, mL):", min_value=1.0, value=5.0, step=1.0)
+                        unit_val = params_p.get('Unit', '')
+                        if stock_input_val > 0 and target_input_val > 0:
+                            if stock_input_val < target_input_val * 1.2: st.error("⚠️ Stock 농도가 Target 농도(120% 범위)보다 낮습니다! 더 진한 Stock을 준비하세요.")
+                            else:
+                                calc_excel = generate_master_recipe_excel(sel_p, target_input_val, unit_val, stock_input_val, vol_input, sample_type, powder_desc)
+                                st.download_button("🧮 시약 제조 계산기 (Master Recipe) 다운로드", calc_excel, f"Master_Recipe_{sel_p}.xlsx")
+                                doc_proto = generate_protocol_premium(sel_p, "Cat", params_p, stock_input_val, vol_input, target_input_val)
+                                st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (GMP)")
-                st.info("실험 데이터를 입력할 엑셀 일지를 생성합니다. (테스트용 자동 채우기 가능)")
-                sel_l = st.selectbox("Select Logbook:", my_plan["Method"].unique(), key="l")
-                
-                # [New] Simulation Checkbox
-                simulate_mode = st.checkbox("🧪 시뮬레이션 데이터 포함 (Test Mode: Auto-fill Data)", value=False, help="체크하면 가상의 결과값이 채워진 엑셀이 생성되어 즉시 보고서를 만들 수 있습니다.")
-                
-                if st.button("Generate Excel Logbook"):
-                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l), simulate=simulate_mode)
-                    
-                    # Session Storage for Step 3
-                    st.session_state['generated_logbook'] = data
-                    st.session_state['generated_log_name'] = sel_l
-                    st.success(f"Logbook Generated! ({'Simulated Data Included' if simulate_mode else 'Blank Template'})")
-                    st.download_button("📥 Download Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
+                st.markdown("### 📗 스마트 엑셀 일지 (All Sheets Included)")
+                st.info("✅ 모든 항목(SST, 직선성, 정확성, 정밀성, 특이성, 완건성, LOD/LOQ)이 포함된 통합 엑셀 일지입니다.")
+                sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
+                if st.button("Download Excel Logbook"):
+                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
+                    st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
             with t3:
-                st.markdown("### 📊 최종 결과 보고서 (Automated)")
-                st.info("작성 완료된 엑셀 일지를 업로드하면 결과가 자동 반영됩니다.")
-                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
-                uploaded_log = st.file_uploader("📂 Upload Filled Logbook (xlsx)", type=["xlsx"])
-                
-                # Automatic Session Retrieval
-                used_log = None
-                if uploaded_log:
-                    used_log = uploaded_log
-                elif 'generated_logbook' in st.session_state and st.session_state['generated_log_name'] == sel_r:
-                    st.info(f"💡 Step 2에서 생성된 '{sel_r}' 일지 데이터를 자동으로 사용합니다.")
-                    used_log = st.session_state['generated_logbook']
-
-                lot_no = st.text_input("Lot No:", value="TBD")
-                
-                if used_log:
-                    st.success("Data Ready for Report!")
-                    extracted_data = extract_logbook_data(used_log)
-                    
-                    with st.expander("🔍 Extracted Data Preview"):
-                        st.json(extracted_data)
-                        
-                    if st.button("Generate Final Report"):
-                        doc_r = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no': lot_no}, extracted_data)
-                        st.download_button("📥 Download Report (Docx)", doc_r, f"Final_Report_{sel_r}.docx")
-                else:
-                    st.warning("⚠️ 엑셀 일지를 업로드하거나 Step 2에서 생성해주세요.")
+                st.markdown("### 📊 최종 결과 보고서")
+                sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
+                with st.form("rep"):
+                    l = st.text_input("Lot"); d = st.text_input("Date"); a = st.text_input("Analyst")
+                    s = st.text_input("SST"); m = st.text_input("Main Result")
+                    if st.form_submit_button("Generate Report"):
+                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
+                        st.download_button("📥 Report", doc, "Report.docx")
