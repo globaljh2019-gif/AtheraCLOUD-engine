@@ -6,8 +6,9 @@ import xlsxwriter
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 # ---------------------------------------------------------
 # 1. 설정 및 데이터 로딩
@@ -94,151 +95,171 @@ def set_korean_font(doc):
     style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
     style.font.size = Pt(10)
 
+def set_table_header_style(cell):
+    """테이블 헤더 스타일 (회색 배경, 굵게)"""
+    tcPr = cell._element.get_or_add_tcPr()
+    shading_elm = OxmlElement('w:shd')
+    shading_elm.set(qn('w:fill'), 'D9D9D9') # 회색 배경
+    tcPr.append(shading_elm)
+    cell.paragraphs[0].runs[0].bold = True
+    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+# [VMP 업그레이드: 실질 문서화]
 def generate_vmp_premium(modality, phase, df_strategy):
-    doc = Document(); set_korean_font(doc)
-    doc.add_heading(f'Validation Master Plan ({modality} - {phase})', 0)
-    doc.add_paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    table = doc.add_table(rows=1, cols=3); table.style = 'Table Grid'
-    hdr = table.rows[0].cells; hdr[0].text='Method'; hdr[1].text='Category'; hdr[2].text='Items'
-    for _, row in df_strategy.iterrows():
-        c = table.add_row().cells
-        c[0].text=str(row['Method']); c[1].text=str(row['Category']); c[2].text=", ".join(row['Required_Items'])
+    doc = Document()
+    set_korean_font(doc)
+    
+    # 1. 문서 제목
+    head = doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0)
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph() # 공백
+
+    # 2. 문서 정보 테이블
+    table_info = doc.add_table(rows=2, cols=4)
+    table_info.style = 'Table Grid'
+    
+    info_headers = ["제품명 (Product)", "단계 (Phase)", "문서 번호 (Doc No.)", "제정 일자 (Date)"]
+    info_values = [f"{modality} Project", phase, "VMP-001", datetime.now().strftime('%Y-%m-%d')]
+    
+    for i, h in enumerate(info_headers):
+        cell = table_info.rows[0].cells[i]
+        cell.text = h
+        set_table_header_style(cell)
+        
+    for i, v in enumerate(info_values):
+        table_info.rows[1].cells[i].text = v
+        table_info.rows[1].cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph()
+
+    # 3. 본문 섹션 생성
+    sections = [
+        ("1. 목적 (Objective)", "본 계획서는 의약품 품질 관리 시험법의 유효성을 보증하고, ICH 및 규제 기관의 요구사항을 충족하기 위한 밸리데이션 전략과 범위를 규정하는 데 목적이 있다."),
+        ("2. 적용 범위 (Scope)", f"본 문서는 {modality}의 {phase} 임상 시험용 의약품 품질 평가에 사용되는 모든 시험방법의 밸리데이션에 적용된다."),
+        ("3. 근거 가이드라인 (Reference Guideline)", "• ICH Q2(R2): Validation of Analytical Procedures\n• MFDS: 의약품 등 시험방법 밸리데이션 가이드라인\n• USP <1225>: Validation of Compendial Procedures"),
+        ("4. 역할 및 책임 (Roles & Responsibility)", "• 품질관리(QC): 밸리데이션 수행 및 데이터 분석, 결과 보고서 작성\n• 품질보증(QA): 계획서 및 보고서 승인, 규정 준수 여부 확인\n• 책임자: 전체 밸리데이션 일정 및 자원 관리")
+    ]
+
+    for title, content in sections:
+        doc.add_heading(title, level=1)
+        p = doc.add_paragraph(content)
+        p.paragraph_format.left_indent = Inches(0.2)
+    
+    # 4. 밸리데이션 전략 테이블 (Main Table)
+    doc.add_heading('5. 밸리데이션 수행 전략 (Validation Strategy)', level=1)
+    doc.add_paragraph("각 시험법별 밸리데이션 수행 항목은 아래와 같이 설정한다.")
+
+    table = doc.add_table(rows=1, cols=4)
+    table.style = 'Table Grid'
+    
+    # 테이블 헤더
+    hdr_cells = table.rows[0].cells
+    headers = ['연번 (No.)', '시험법 (Method)', '범주 (Category)', '필수 수행 항목 (Required Items)']
+    for i, h in enumerate(headers):
+        hdr_cells[i].text = h
+        set_table_header_style(hdr_cells[i])
+
+    # 테이블 데이터 채우기
+    for idx, row in df_strategy.iterrows():
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(idx + 1)
+        row_cells[1].text = str(row['Method'])
+        row_cells[2].text = str(row['Category'])
+        row_cells[3].text = ", ".join(row['Required_Items'])
+
+    # 5. 일정 계획
+    doc.add_heading('6. 일정 계획 (Schedule)', level=1)
+    doc.add_paragraph("세부 일정은 개별 밸리데이션 계획서(Protocol)에 따르며, 프로젝트 타임라인에 맞춰 승인 완료한다.")
+
+    # 6. 결재란
+    doc.add_heading('7. 승인 (Approval)', level=1)
+    table_sign = doc.add_table(rows=2, cols=3)
+    table_sign.style = 'Table Grid'
+    sign_headers = ["작성 (Prepared by)", "검토 (Reviewed by)", "승인 (Approved by)"]
+    for i, h in enumerate(sign_headers):
+        cell = table_sign.rows[0].cells[i]
+        cell.text = h
+        set_table_header_style(cell)
+    
+    for i in range(3):
+        table_sign.rows[1].cells[i].text = "\n\n(서명/날짜)\n"
+
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [복구 완료] 상세 계획서 (Protocol) - 목적/기기/기준 3단 구성
+# [Protocol 생성 함수 - 기존 유지]
 def generate_protocol_premium(method_name, category, params):
     doc = Document(); set_korean_font(doc)
-    
-    # 타이틀
     doc.add_heading(f'Validation Protocol: {method_name}', 0)
     p = doc.add_paragraph()
     p.add_run("Test Category: ").bold = True; p.add_run(f"{category}\n")
     p.add_run("Guideline: ").bold = True; p.add_run(f"{params.get('Reference_Guideline', 'ICH Q2(R2)')}")
     
-    # 1. 목적
     doc.add_heading('1. 목적 (Objective)', level=1)
-    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법이 의약품 품질 관리에 적합함을 입증하기 위한 밸리데이션 절차와 기준을 정의한다.")
+    doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 절차, 방법 및 판정 기준을 기술한다.")
 
-    # 2. 기기 및 조건
     doc.add_heading('2. 기기 및 분석 조건 (Instruments & Conditions)', level=1)
-    # 표로 정리
     table_cond = doc.add_table(rows=0, cols=2); table_cond.style = 'Table Grid'
-    
-    cond_list = [
-        ("기기 (Instrument)", params.get('Instrument')),
-        ("컬럼 (Column)", params.get('Column_Plate')),
-        ("조건 A (Condition)", params.get('Condition_A')),
-        ("조건 B (Condition)", params.get('Condition_B')),
-        ("검출 (Detection)", params.get('Detection'))
-    ]
-    for k, v in cond_list:
-        r = table_cond.add_row().cells
-        r[0].text = k; r[0].paragraphs[0].runs[0].bold = True
-        r[1].text = v if v else "N/A"
+    cond_items = [("기기 (Instrument)", params.get('Instrument')), ("컬럼 (Column)", params.get('Column_Plate')),
+                  ("조건 A (Condition)", params.get('Condition_A')), ("조건 B (Condition)", params.get('Condition_B')),
+                  ("검출 (Detection)", params.get('Detection'))]
+    for k, v in cond_items:
+        r = table_cond.add_row().cells; r[0].text = k; r[0].paragraphs[0].runs[0].bold = True; r[1].text = v if v else "N/A"
 
-    # 3. 밸리데이션 항목 및 기준
     doc.add_heading('3. 밸리데이션 항목 및 기준 (Criteria)', level=1)
     table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
-    table.rows[0].cells[0].text = "항목 (Parameter)"
-    table.rows[0].cells[1].text = "절차 및 판정 기준 (Criteria)"
-    table.rows[0].cells[0].paragraphs[0].runs[0].bold = True
-    table.rows[0].cells[1].paragraphs[0].runs[0].bold = True
+    table.rows[0].cells[0].text = "항목 (Parameter)"; table.rows[0].cells[1].text = "절차 및 판정 기준 (Criteria)"
+    table.rows[0].cells[0].paragraphs[0].runs[0].bold = True; table.rows[0].cells[1].paragraphs[0].runs[0].bold = True
     
-    items = [
-        ("특이성 (Specificity)", params.get('Detail_Specificity')),
-        ("직선성 (Linearity)", params.get('Detail_Linearity')),
-        ("범위 (Range)", params.get('Detail_Range')),
-        ("정확성 (Accuracy)", params.get('Detail_Accuracy')),
-        ("정밀성 (반복성)", params.get('Detail_Precision')),
-        ("실험실내 정밀성", params.get('Detail_Inter_Precision')),
-        ("LOD / LOQ", f"LOD: {params.get('Detail_LOD')} / LOQ: {params.get('Detail_LOQ')}"),
-        ("완건성 (Robustness)", params.get('Detail_Robustness'))
-    ]
-    
+    items = [("특이성 (Specificity)", params.get('Detail_Specificity')), ("직선성 (Linearity)", params.get('Detail_Linearity')),
+             ("범위 (Range)", params.get('Detail_Range')), ("정확성 (Accuracy)", params.get('Detail_Accuracy')),
+             ("정밀성 (반복성)", params.get('Detail_Precision')), ("실험실내 정밀성", params.get('Detail_Inter_Precision')),
+             ("LOD/LOQ", f"LOD: {params.get('Detail_LOD')} / LOQ: {params.get('Detail_LOQ')}"), ("완건성 (Robustness)", params.get('Detail_Robustness'))]
     for k, v in items:
-        # 내용이 있는 항목만 표시
-        if v and "정보 없음" not in v:
-            r = table.add_row().cells
-            r[0].text = k
-            r[1].text = v
-            
+        if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text = k; r[1].text = v
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - 5개 탭 & 차트 유지]
+# [Excel 생성 함수 - 기존 유지]
 def generate_smart_excel(method_name, category, params):
-    output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    
-    # Formats
+    output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center', 'valign':'vcenter'})
-    cell = workbook.add_format({'border':1, 'align':'center'})
-    num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
+    cell = workbook.add_format({'border':1, 'align':'center'}); num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'})
 
-    # Sheet 1: Info
-    ws1 = workbook.add_worksheet("1. Info & Prep")
-    ws1.set_column('A:A', 20); ws1.set_column('B:E', 15)
+    ws1 = workbook.add_worksheet("1. Info & Prep"); ws1.set_column('A:A', 20); ws1.set_column('B:E', 15)
     ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), 
-            ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     r = 3
-    for k, v in info:
-        ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v, cell); r+=1
+    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v, cell); r+=1
     ws1.write(r+1, 0, "Reagent", sub); ws1.merge_range(r+1, 1, r+1, 4, params.get('Ref_Standard_Info', ''), cell)
     ws1.write(r+2, 0, "Prep Method", sub); ws1.merge_range(r+2, 1, r+2, 4, params.get('Preparation_Sample', ''), cell)
 
-    # Sheet 2: Linearity (Chart & Triplicate)
     target_conc = params.get('Target_Conc')
     if target_conc:
-        ws2 = workbook.add_worksheet("2. Linearity")
-        ws2.set_column('A:C', 10); ws2.set_column('D:E', 12); ws2.set_column('F:H', 15)
-        unit = params.get('Unit', 'ppm')
-        ws2.merge_range('A1:H1', f'Linearity: Triplicate Analysis (Target: {target_conc} {unit})', header)
-        headers = ["Level", "Rep", f"Conc ({unit})", "Weight", "Vol", "Response (Y)", "Mean (Y)", "RSD (%)"]
-        for c, h in enumerate(headers): ws2.write(2, c, h, sub)
-        
-        levels = [80, 90, 100, 110, 120]
-        row = 3
-        chart_rows = [] 
+        ws2 = workbook.add_worksheet("2. Linearity"); ws2.set_column('A:H', 12)
+        unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:H1', f'Linearity: Triplicate Analysis (Target: {target_conc} {unit})', header)
+        for c, h in enumerate(["Level", "Rep", f"Conc ({unit})", "Weight", "Vol", "Response (Y)", "Mean (Y)", "RSD (%)"]): ws2.write(2, c, h, sub)
+        levels = [80, 90, 100, 110, 120]; row = 3; chart_rows = []
         for level in levels:
-            target_val = float(target_conc) * (level / 100)
-            start_row = row + 1
+            target_val = float(target_conc) * (level / 100); start_row = row + 1
             for i in range(1, 4):
-                ws2.write(row, 0, f"{level}%", cell); ws2.write(row, 1, i, cell)
-                ws2.write(row, 2, target_val, num); ws2.write(row, 3, "", cell)
-                ws2.write(row, 4, 50, cell); ws2.write(row, 5, "", cell)
+                ws2.write_row(row, 0, [f"{level}%", i, target_val, "", 50, ""], cell)
                 if i == 1:
-                    ws2.merge_range(row, 6, row+2, 6, "", calc)
-                    ws2.write_formula(row, 6, f"=AVERAGE(F{start_row}:F{start_row+2})", calc)
-                    ws2.merge_range(row, 7, row+2, 7, "", calc)
-                    ws2.write_formula(row, 7, f"=STDEV(F{start_row}:F{start_row+2})/G{start_row}*100", calc)
+                    ws2.merge_range(row, 6, row+2, 6, "", calc); ws2.write_formula(row, 6, f"=AVERAGE(F{start_row}:F{start_row+2})", calc)
+                    ws2.merge_range(row, 7, row+2, 7, "", calc); ws2.write_formula(row, 7, f"=STDEV(F{start_row}:F{start_row+2})/G{start_row}*100", calc)
                     chart_rows.append(row + 1)
                 row += 1
-        
-        # Summary Table for Chart
-        s_row = row + 2
-        ws2.merge_range(s_row, 1, s_row, 3, "■ Summary for Chart", sub)
-        ws2.write_row(s_row+1, 1, ["Conc (X)", "Mean (Y)", "R²"], sub)
-        for idx, r_idx in enumerate(chart_rows):
-            ws2.write_formula(s_row+2+idx, 1, f"=C{r_idx}", num)
-            ws2.write_formula(s_row+2+idx, 2, f"=G{r_idx}", num)
+        s_row = row + 2; ws2.merge_range(s_row, 1, s_row, 3, "■ Summary for Chart", sub); ws2.write_row(s_row+1, 1, ["Conc (X)", "Mean (Y)", "R²"], sub)
+        for idx, r_idx in enumerate(chart_rows): ws2.write_formula(s_row+2+idx, 1, f"=C{r_idx}", num); ws2.write_formula(s_row+2+idx, 2, f"=G{r_idx}", num)
         ws2.write_formula(s_row+2, 3, f"=RSQ(C{s_row+3}:C{s_row+7}, B{s_row+3}:B{s_row+7})", calc)
-
         chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
-        chart.add_series({
-            'name': 'Calibration Curve', 'categories': f"='2. Linearity'!$B${s_row+3}:$B${s_row+7}",
-            'values': f"='2. Linearity'!$C${s_row+3}:$C${s_row+7}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}
-        })
+        chart.add_series({'categories': f"='2. Linearity'!$B${s_row+3}:$B${s_row+7}", 'values': f"='2. Linearity'!$C${s_row+3}:$C${s_row+7}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}})
         ws2.insert_chart('J3', chart)
 
-    # Sheet 3: Precision
     if params.get('Detail_Inter_Precision'):
-        ws3 = workbook.add_worksheet("3. Precision")
-        ws3.set_column('A:E', 15)
-        ws3.merge_range('A1:E1', 'Intermediate Precision', header)
+        ws3 = workbook.add_worksheet("3. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Intermediate Precision', header)
         ws3.merge_range('A3:E3', "■ Day 1", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
         for i in range(6): ws3.write_row(4+i, 0, [i+1, "Sample", ""], cell)
         ws3.write_formula('D5', "=AVERAGE(C5:C10)", num); ws3.write_formula('E5', "=STDEV(C5:C10)/D5*100", num)
@@ -247,57 +268,35 @@ def generate_smart_excel(method_name, category, params):
         ws3.write_formula('D14', "=AVERAGE(C14:C19)", num); ws3.write_formula('E14', "=STDEV(C14:C19)/D14*100", num)
         ws3.write('A21', "Diff (%)", sub); ws3.write_formula('B21', "=ABS(D5-D14)/AVERAGE(D5,D14)*100", num)
 
-    # Sheet 4: Robustness
     if params.get('Detail_Robustness'):
-        ws4 = workbook.add_worksheet("4. Robustness")
-        ws4.set_column('A:F', 18)
-        ws4.merge_range('A1:F1', 'Robustness Conditions', header)
+        ws4 = workbook.add_worksheet("4. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header)
         ws4.merge_range('A2:F2', f"Guide: {params.get('Detail_Robustness')}", cell)
-        r_headers = ["Condition", "Set", "Actual", "SST", "Pass/Fail", "Note"]
-        for col, h in enumerate(r_headers): ws4.write(3, col, h, sub)
-        conds = ["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]
-        r = 4
-        for c in conds:
-            ws4.write(r, 0, c, cell)
-            for col in range(1, 6): ws4.write(r, col, "", cell)
-            r += 1
+        for c, h in enumerate(["Condition", "Set", "Actual", "SST", "Pass/Fail", "Note"]): ws4.write(3, c, h, sub)
+        for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]):
+            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, cell)
 
-    # Sheet 5: Raw Data
-    ws5 = workbook.add_worksheet("5. Raw Data")
-    ws5.set_column('A:F', 15)
-    ws5.merge_range('A1:F1', 'Raw Data', header)
-    headers = ["Inj No.", "Sample Name", "RT", "Area", "Height", "Remarks"]
-    for col, h in enumerate(headers): ws5.write(2, col, h, sub)
-    for row in range(3, 23):
-        for col in range(6): ws5.write(row, col, "", cell)
+    ws5 = workbook.add_worksheet("5. Raw Data"); ws5.set_column('A:F', 15); ws5.merge_range('A1:F1', 'Raw Data', header)
+    for c, h in enumerate(["Inj No.", "Sample Name", "RT", "Area", "Height", "Remarks"]): ws5.write(2, c, h, sub)
+    for r in range(3, 23): ws5.write_row(r, 0, [""]*6, cell)
     
     workbook.close(); output.seek(0)
     return output
 
+# [Report 생성 함수 - 기존 유지]
 def generate_summary_report_gmp(method_name, category, params, user_inputs):
-    doc = Document(); set_korean_font(doc)
-    doc.add_heading(f'Validation Summary Report: {method_name}', 0)
-    
+    doc = Document(); set_korean_font(doc); doc.add_heading(f'Validation Summary Report: {method_name}', 0)
     info = doc.add_table(rows=3, cols=2); info.style='Table Grid'
     d = [("Category", category), ("Lot/Date", f"{user_inputs['lot_no']} / {user_inputs['date']}"), ("Analyst", user_inputs['analyst'])]
     for i, (k, v) in enumerate(d): info.rows[i].cells[0].text=k; info.rows[i].cells[1].text=str(v)
-
     doc.add_heading('1. 상세 결과 (Results)', level=1)
     table = doc.add_table(rows=1, cols=3); table.style='Table Grid'
     table.rows[0].cells[0].text="항목"; table.rows[0].cells[1].text="기준"; table.rows[0].cells[2].text="결과"
-    
-    check_items = [
-        ("특이성", params.get('Detail_Specificity'), "Pass"),
-        ("직선성 (R²)", params.get('Detail_Linearity'), "Pass (See Chart)"),
-        ("정밀성 (반복성)", params.get('Detail_Precision'), user_inputs.get('main_result', 'N/A')),
-        ("실험실내 정밀성", params.get('Detail_Inter_Precision'), "Pass"),
-        ("완건성", params.get('Detail_Robustness'), "Pass")
-    ]
+    check_items = [("특이성", params.get('Detail_Specificity'), "Pass"), ("직선성 (R²)", params.get('Detail_Linearity'), "Pass (See Chart)"),
+                   ("정밀성", params.get('Detail_Precision'), user_inputs.get('main_result', 'N/A')),
+                   ("실험실내 정밀성", params.get('Detail_Inter_Precision'), "Pass"), ("완건성", params.get('Detail_Robustness'), "Pass")]
     for k, c, r in check_items:
         if c: table.add_row().cells[0].text=k; table.rows[-1].cells[1].text=c; table.rows[-1].cells[2].text=r
-
-    doc.add_heading('2. 결론', level=1)
-    doc.add_paragraph("본 시험법은 모든 밸리데이션 항목을 만족하므로 적합함.")
+    doc.add_heading('2. 결론', level=1); doc.add_paragraph("본 시험법은 모든 밸리데이션 항목을 만족하므로 적합함.")
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
@@ -325,16 +324,16 @@ with col2:
             
             with t1:
                 st.markdown("### 1️⃣ 전략 (VMP) 및 상세 계획서 (Protocol)")
+                st.info("VMP 다운로드 시: 표지, 문서 정보, 목적, 근거 가이드라인, 전략 테이블이 포함된 '실질 문서'가 생성됩니다.")
                 st.dataframe(my_plan[["Method", "Category"]])
                 c1, c2 = st.columns(2)
-                with c1: st.download_button("📥 VMP Download", generate_vmp_premium(sel_modality, sel_phase, my_plan), "VMP_Master.docx")
+                with c1: st.download_button("📥 VMP(종합계획서) 다운로드", generate_vmp_premium(sel_modality, sel_phase, my_plan), "VMP_Master.docx")
                 with c2:
                     sel_p = st.selectbox("Protocol:", my_plan["Method"].unique())
-                    if sel_p: st.download_button("📄 Protocol Download", generate_protocol_premium(sel_p, "Cat", get_method_params(sel_p)), f"Protocol_{sel_p}.docx")
+                    if sel_p: st.download_button("📄 상세 계획서(Protocol) 다운로드", generate_protocol_premium(sel_p, "Cat", get_method_params(sel_p)), f"Protocol_{sel_p}.docx")
 
             with t2:
                 st.markdown("### 📗 스마트 엑셀 일지 (3회 반복 & RSD)")
-                st.info("직선성 시트에 '3회 반복 측정' 및 'RSD 자동 계산' 기능이 포함되었습니다.")
                 sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
