@@ -229,54 +229,112 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
 
 # [Excel 생성 함수 - Smart Logbook (ACTUAL WEIGHT & CORRECTION LOGIC)]
 def generate_smart_excel(method_name, category, params):
-    output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
-    # Styles
+    # 1. 스타일 정의 (NameError 방지를 위해 최상단 정의)
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center', 'valign':'vcenter'})
     sub_rep = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FCE4D6', 'align':'left'}) 
-    cell = workbook.add_format({'border':1, 'align':'center'}); num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
-    num3 = workbook.add_format({'border':1, 'num_format':'0.000', 'align':'center'}) # 소수점 3자리
-    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) # Input
-    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # Calc
+    cell = workbook.add_format({'border':1, 'align':'center'})
+    num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
+    num3 = workbook.add_format({'border':1, 'num_format':'0.000', 'align':'center'}) 
+    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) 
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) 
     pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
-    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.0', 'align':'center'})
+    # [에러 해결] total_fmt 스타일 정의 추가
+    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'})
 
-    # 1. Info Sheet (Enhanced with Correction Factor)
-    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
-    r = 3; 
-    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
-    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리(농도 3째자리)에서 절사(ROUNDDOWN).", cell)
+    # 1. Info Sheet
+    ws1 = workbook.add_worksheet("1. Info")
+    ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
+    ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     
-    # [수정 1] Target Conc 위치 고정 (B9 셀)
-    target_conc_val = float(params.get('Target_Conc', 0)) if params.get('Target_Conc') else 0
-    ws1.write(r+2, 0, "Target Conc (100%):", sub); ws1.write(r+2, 1, target_conc_val, calc); ws1.write(r+2, 2, params.get('Unit', 'ppm'), cell)
-    target_conc_ref = "'1. Info'!$B$9"
+    # 기본 정보 입력란
+    info_rows = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    for r_idx, (k, v) in enumerate(info_rows):
+        ws1.write(r_idx + 3, 0, k, sub)
+        ws1.merge_range(r_idx + 3, 1, r_idx + 3, 4, v if v else "", cell)
+    
+    ws1.write(7, 0, "Target Conc (100%):", sub)
+    ws1.write(7, 1, float(params.get('Target_Conc', 1.0)), calc) # B8
+    ws1.write(7, 2, params.get('Unit', 'mg/mL'), cell)
 
-    # [수정 2] Standard Preparation & Correction Factor 섹션 (Row 11부터 시작)
-    r = 10 
-    ws1.merge_range(r, 0, r, 4, "■ Standard Preparation & Correction Factor", sub_rep); r+=1
-    ws1.write(r, 0, "Theoretical Stock (mg/mL):", sub); ws1.write(r, 1, "", calc) # B12
-    ws1.write(r+1, 0, "Purity (Potency, %):", sub); ws1.write(r+1, 1, 100.0, calc) # B13
-    ws1.write(r+2, 0, "Water Content (%):", sub); ws1.write(r+2, 1, 0.0, calc) # B14
-    ws1.write(r+3, 0, "Actual Weight (mg):", sub); ws1.write(r+3, 1, "", calc) # B15
-    ws1.write(r+4, 0, "Final Volume (mL):", sub); ws1.write(r+4, 1, "", calc) # B16
-    
-    # Actual Stock Conc Calculation (B17)
-    ws1.write(r+5, 0, "Actual Stock (mg/mL):", sub)
-    ws1.write_formula(r+5, 1, f'=IF(B{r+5}="","",ROUNDDOWN((B{r+4}*(B{r+2}/100)*((100-B{r+3})/100))/B{r+5}, 4))', auto)
-    
-    # Correction Factor Calculation (B18)
-    ws1.write(r+6, 0, "Correction Factor:", sub)
-    ws1.write_formula(r+6, 1, f'=IF(OR(B{r+1}="", B{r+1}=0, B{r+6}=""), 1, ROUNDDOWN(B{r+6}/B{r+1}, 4))', total_fmt)
-    
-    corr_factor_ref = "'1. Info'!$B$18" # 보정계수 참조 위치
-    # 참조용 이름 정의 (Correction Factor)
-    corr_factor_ref = "'1. Info'!$B$14" # 14행(r+6) 참조
+    # Standard Preparation Section (Row 10부터 시작)
+    ws1.merge_range(10, 0, 10, 4, "■ Standard Preparation & Correction Factor", sub_rep)
+    labels = ["Theoretical Stock (mg/mL):", "Purity (Potency, %):", "Water Content (%):", "Actual Weight (mg):", "Final Volume (mL):"]
+    for i, label in enumerate(labels):
+        ws1.write(11 + i, 0, label, sub)
+        if "Purity" in label: ws1.write(11 + i, 1, 100.0, calc)
+        elif "Water" in label: ws1.write(11 + i, 1, 0.0, calc)
+        else: ws1.write(11 + i, 1, "", calc)
 
+    # Actual Stock (B17) & Corr Factor (B18)
+    ws1.write(16, 0, "Actual Stock (mg/mL):", sub)
+    ws1.write_formula(16, 1, '=IF(OR(B16="",B16=0),"",ROUNDDOWN((B15*(B12/100)*((100-B13)/100))/B16, 4))', auto)
+    ws1.write(17, 0, "Correction Factor:", sub)
+    ws1.write_formula(17, 1, '=IF(OR(B12="",B12=0,B17=""), 1, ROUNDDOWN(B17/B12, 4))', total_fmt)
+
+    # 4. Linearity Sheet (참조 주소 보정)
+    ws2 = workbook.add_worksheet("4. Linearity")
+    ws2.set_column('A:I', 13)
+    ws2.merge_range('A1:I1', 'Linearity Test', header)
+    
+    row = 3
+    rep_rows = {1: [], 2: [], 3: []}
+    for rep in range(1, 4):
+        ws2.merge_range(row, 0, row, 8, f"■ Repetition {rep}", sub_rep); row += 1
+        ws2.write_row(row, 0, ["Level", "Conc (X)", "Area (Y)", "Back Calc", "Accuracy (%)", "Check"], sub); row += 1
+        data_start = row
+        for level in [80, 90, 100, 110, 120]:
+            ws2.write(row, 0, f"{level}%", cell)
+            # [수식 보정] Info 시트의 Target(B8) * (Level/100) * CorrFactor(B18) 참조
+            formula_x = f"=ROUNDDOWN('1. Info'!$B$8 * ({level}/100) * '1. Info'!$B$18, 3)"
+            ws2.write_formula(row, 1, formula_x, num3)
+            ws2.write(row, 2, "", calc)
+            rep_rows[rep].append(row + 1)
+            
+            # Individual Slope/Int references for Back Calc
+            slope_ref = f"C{data_start+7}"; int_ref = f"C{data_start+8}"
+            ws2.write_formula(row, 3, f'=IF(C{row+1}="", "", ROUNDDOWN((C{row+1}-{int_ref})/{slope_ref}, 3))', auto)
+            ws2.write_formula(row, 4, f'=IF(C{row+1}="", "", ROUNDDOWN(D{row+1}/B{row+1}*100, 1))', auto)
+            ws2.write(row, 5, "OK", cell); row += 1
+        
+        ws2.write(row, 1, "Slope:", sub); ws2.write_formula(row, 2, f"=SLOPE(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
+        ws2.write(row+1, 1, "Intercept:", sub); ws2.write_formula(row+1, 2, f"=INTERCEPT(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
+        ws2.write(row+2, 1, "R²:", sub); ws2.write_formula(row+2, 2, f"=RSQ(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
+        
+        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+        chart.add_series({'name': f'Rep {rep}', 'categories': f"='4. Linearity'!$B${data_start+1}:$B${row}", 'values': f"='4. Linearity'!$C${data_start+1}:$C${row}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}})
+        ws2.insert_chart(f'G{data_start}', chart); row += 6
+
+    # 5. Accuracy Sheet (Layout Fixed)
+    ws_acc = workbook.add_worksheet("5. Accuracy")
+    ws_acc.set_column('A:G', 15)
+    ws_acc.merge_range('A1:G1', 'Accuracy Test (Recovery)', header)
+    ws_acc.write('E3', "Slope:", sub); ws_acc.write('F3', "='4. Linearity'!C35", calc) # Summary Slope reference
+    ws_acc.write('E4', "Intercept:", sub); ws_acc.write('F4', "='4. Linearity'!C36", calc)
+
+    acc_row = 6
+    for level in [80, 100, 120]:
+        ws_acc.merge_range(acc_row, 0, acc_row, 6, f"■ Level {level}% (3 Reps)", sub_rep); acc_row += 1
+        ws_acc.write_row(acc_row, 0, ["Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)", "Criteria", "Result"], sub); acc_row += 1
+        start_r = acc_row
+        for rep in range(1, 4):
+            ws_acc.write(acc_row, 0, rep, cell)
+            ws_acc.write_formula(acc_row, 1, f"=ROUNDDOWN('1. Info'!$B$8 * ({level}/100) * '1. Info'!$B$18, 3)", num3)
+            ws_acc.write(acc_row, 2, "", calc)
+            ws_acc.write_formula(acc_row, 3, f'=IF(C{acc_row+1}="","",ROUNDDOWN((C{acc_row+1}-$F$4)/$F$3, 3))', auto)
+            ws_acc.write_formula(acc_row, 4, f'=IF(D{acc_row+1}="","",ROUNDDOWN(D{acc_row+1}/B{acc_row+1}*100, 1))', auto)
+            ws_acc.write(acc_row, 5, "80~120%", cell)
+            ws_acc.write_formula(acc_row, 6, f'=IF(E{acc_row+1}="","",IF(AND(E{acc_row+1}>=80, E{acc_row+1}<=120), "Pass", "Fail"))', pass_fmt)
+            acc_row += 1
+        ws_acc.write(acc_row, 3, "Mean Rec(%):", sub)
+        # total_fmt 에러 방지 완료
+        ws_acc.write_formula(acc_row, 4, f"=ROUNDDOWN(AVERAGE(E{start_r+1}:E{acc_row}), 1)", total_fmt)
+        acc_row += 2
     # 2. SST Sheet
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
