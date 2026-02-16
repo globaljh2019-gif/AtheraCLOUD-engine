@@ -192,6 +192,7 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
 # [PROTOCOL]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
     doc = Document(); set_korean_font(doc)
+    
     def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
     target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
     section = doc.sections[0]; header = section.header; 
