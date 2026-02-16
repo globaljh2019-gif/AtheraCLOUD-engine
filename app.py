@@ -255,70 +255,115 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
 
     # 3.1 공통 조제 (Stock)
     doc.add_heading('3.1 표준 모액 및 희석액 조제', level=2)
-    doc.add_paragraph("1) 희석액(Diluent): 이동상 또는 규정된 용매를 사용하여 조제한다.")
-    doc.add_paragraph(f"2) 표준 모액(Stock): 표준품을 정밀하게 달아 {s_conc} {unit} 농도가 되도록 희석액으로 녹여 조제한다.")
-
-    # 3.2 특이성 (Specificity)
-    doc.add_heading('3.2 특이성 (Specificity)', level=2)
-    doc.add_paragraph("다음의 용액을 조제하여 각각 1회 주입한다. 간섭 피크 유무를 확인한다.")
-    doc.add_paragraph("• 공시험액 (Blank): 희석액(Diluent)을 그대로 사용한다.")
-    doc.add_paragraph("• 위약 (Placebo): 주성분을 제외한 기제를 정밀하게 달아 희석액에 녹여 조제한다.")
-    doc.add_paragraph(f"• 표준액 (Standard): 표준 모액을 희석하여 타겟 농도({t_conc} {unit})로 조제한다.")
-
-    # 3.3 직선성 (Linearity) - [표 삽입]
-    doc.add_heading('3.3 직선성 (Linearity)', level=2)
-    doc.add_paragraph(f"기준 농도({t_conc} {unit})의 80% ~ 120% 범위가 되도록 아래 표에 따라 5개 레벨의 검액을 조제한다.")
-    
-    # 직선성 조제표 생성
-    t_lin = doc.add_table(rows=1, cols=5); t_lin.style = 'Table Grid'
-    headers = ["Level (%)", f"Conc ({unit})", "Stock (mL)", "Diluent (mL)", "Total (mL)"]
-    for i, h in enumerate(headers):
-        t_lin.rows[0].cells[i].text = h
-        set_table_header_style(t_lin.rows[0].cells[i])
-    
-    for level in [80, 90, 100, 110, 120]:
-        r = t_lin.add_row().cells
-        tgt = t_conc * (level/100)
-        vol_s = (tgt * v_req) / s_conc # Stock Vol = (Target * Total) / Stock
-        vol_d = v_req - vol_s
-        r[0].text = f"{level}%"; r[1].text = f"{tgt:.4f}"; r[2].text = f"{vol_s:.3f}"; r[3].text = f"{vol_d:.3f}"; r[4].text = f"{v_req:.1f}"
-    
-    doc.add_paragraph("※ 각 농도별로 조제한 용액을 HPLC에 주입하여 검량선을 작성한다.")
-
-    # 3.4 정확성 (Accuracy)
-    doc.add_heading('3.4 정확성 (Accuracy)', level=2)
-    doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 시료를 조제한다. 각 레벨당 3개의 독립된 검액을 준비한다 (총 9개 검액).")
-    doc.add_paragraph("• 80% Level: 위 직선성 조제표의 80% 조건으로 3회 조제한다.")
-    doc.add_paragraph("• 100% Level: 위 직선성 조제표의 100% 조건으로 3회 조제한다.")
-    doc.add_paragraph("• 120% Level: 위 직선성 조제표의 120% 조건으로 3회 조제한다.")
-
-    # 3.5 정밀성 (Precision)
-    doc.add_heading('3.5 정밀성 (Precision)', level=2)
-    doc.add_paragraph(f"기준 농도({t_conc} {unit}, 100% Level)에 해당하는 검액을 6개 독립적으로 조제한다.")
-    doc.add_paragraph(f"• 조제법: 표준 모액 {((t_conc * v_req) / s_conc):.3f} mL를 취하여 {v_req} mL 부피 플라스크에 넣고 희석액으로 표선까지 채운다. (n=6)")
+    doc.add_paragraph("1) 희석액(Diluent): 이동상 A와 B를 지정된 비율로 혼합하거나 규정된 용매를 사용하여 준비한다.")
+    doc.add_paragraph(f"2) 표준 모액(Stock Solution): 표준품을 정밀하게 달아 {s_conc} {unit} 농도가 되도록 희석액으로 녹여 조제한다.")
+    doc.add_paragraph(f"3) 위약(Placebo): 주성분을 제외한 기제(Matrix)를 정밀하게 달아 {v_req} mL 부피 플라스크에 넣고 희석액으로 표선까지 채워 조제한다.")
 
     # -----------------------------------------------------------
-    # 4. 판정 기준 (Criteria)
+    # 3.2 항목별 상세 조제법 (특이성, 직선성, 정확성, 정밀성)
     # -----------------------------------------------------------
-    doc.add_heading('4. 판정 기준 (Acceptance Criteria)', level=1)
+    doc.add_heading('3.2 항목별 검액 조제 및 시험 방법', level=2)
+
+    # [특이성]
+    doc.add_paragraph("가. 특이성 (Specificity)")
+    doc.add_paragraph("  다음의 용액을 각각 조제하여 HPLC에 1회 주입하고 크로마토그램을 확인한다.")
+    doc.add_paragraph("  - 공시험액 (Blank): 희석액을 그대로 사용.")
+    doc.add_paragraph(f"  - 위약 (Placebo): 위 3.1항에 따라 조제한 {v_req} mL 용액 사용.")
+    doc.add_paragraph(f"  - 표준액 (Standard): 표준 모액을 희석하여 타겟 농도 {t_conc} {unit} (100%)로 조제.")
+
+    # [직선성 & 정확성] - 계산 로직 적용된 상세 지시문
+    doc.add_paragraph("나. 직선성 및 정확성 (Linearity & Accuracy)")
+    doc.add_paragraph(f"  표준 모액({s_conc} {unit})을 사용하여 아래 표와 같이 단계별로 희석하여 검액을 조제한다.")
+    doc.add_paragraph(f"  (목표 조제 부피: {v_req} mL 기준)")
+
+    # 조제표 생성
+    t_recipe = doc.add_table(rows=1, cols=6); t_recipe.style = 'Table Grid'
+    headers = ["항목 (Item)", "Level", "목표 농도", "모액 취함 (mL)", "최종 부피 (mL)", "희석액 (mL)"]
+    for i, h in enumerate(headers): 
+        t_recipe.rows[0].cells[i].text = h
+        set_table_header_style(t_recipe.rows[0].cells[i])
+
+    # 5개 레벨 (80, 90, 100, 110, 120) 계산 및 행 추가
+    levels = [80, 90, 100, 110, 120]
+    for level in levels:
+        row = t_recipe.add_row().cells
+        tgt_c = t_conc * (level / 100)
+        
+        # Stock Volume 계산: (Target * Total) / Stock
+        if s_conc > 0:
+            vol_s = (tgt_c * v_req) / s_conc
+            vol_d = v_req - vol_s
+        else:
+            vol_s = 0; vol_d = 0
+            
+        # 정확성 해당 여부 표시 (80, 100, 120만 정확성)
+        usage = "직선성/정확성" if level in [80, 100, 120] else "직선성"
+        
+        row[0].text = usage
+        row[1].text = f"{level}%"
+        row[2].text = f"{tgt_c:.4f} {unit}"
+        row[3].text = f"{vol_s:.3f}" # 핵심: 취해야 할 양
+        row[4].text = f"{v_req:.1f}" # 최종 부피
+        row[5].text = f"{vol_d:.3f}" # 희석액 양
+
+    doc.add_paragraph("  ※ 위 표에 제시된 '모액 취함' 양을 마이크로피펫 또는 피펫으로 정확히 취하여 '최종 부피' 플라스크에 넣고 희석액으로 채운다.")
+    doc.add_paragraph("  - 직선성: 각 레벨별 1회 조제하여 분석.")
+    doc.add_paragraph("  - 정확성: 80%, 100%, 120% 레벨은 각각 3회씩 독립적으로 조제하여 분석한다.")
+
+    # [정밀성]
+    doc.add_paragraph("다. 정밀성 (Precision)")
+    doc.add_paragraph(f"  기준 농도({t_conc} {unit})인 100% 레벨 검액을 6개 독립적으로 조제한다.")
+    if s_conc > 0:
+        p_vol = (t_conc * v_req) / s_conc
+        doc.add_paragraph(f"  (조제법: 표준 모액 {p_vol:.3f} mL를 취하여 {v_req} mL 부피 플라스크에 넣고 희석한다.) x 6회 반복")
+
+    # -----------------------------------------------------------
+    # 4. 판정 기준 (Criteria) - 구체적 비교 대상 명시
+    # -----------------------------------------------------------
+    doc.add_heading('4. 밸리데이션 항목 및 판정 기준 (Acceptance Criteria)', level=1)
+    
     t_crit = doc.add_table(rows=1, cols=2); t_crit.style = 'Table Grid'
-    t_crit.rows[0].cells[0].text = "항목 (Item)"; t_crit.rows[0].cells[1].text = "기준 (Criteria)"
+    t_crit.rows[0].cells[0].text = "시험 항목 (Test Item)"
+    t_crit.rows[0].cells[1].text = "판정 기준 (Criteria) 및 평가 방법"
     set_table_header_style(t_crit.rows[0].cells[0]); set_table_header_style(t_crit.rows[0].cells[1])
     
-    items = [
-        ("특이성", params.get('Detail_Specificity', "간섭 피크 ≤ 0.5%")),
-        ("직선성", params.get('Detail_Linearity', "결정계수(R²) ≥ 0.990")),
-        ("정확성", params.get('Detail_Accuracy', "회수율 80.0 ~ 120.0%")),
-        ("정밀성", params.get('Detail_Precision', "RSD ≤ 2.0%")),
-        ("정량한계 (LOQ)", params.get('Detail_LOQ', "S/N 비 ≥ 10"))
+    # 구체적인 기준 문구 생성
+    criteria_details = [
+        ("특이성 (Specificity)", 
+         f"1) 공시험액(Blank) 및 위약(Placebo)에서 주성분 피크 위치에 간섭 피크가 없어야 한다.\n"
+         f"   (기준: {params.get('Detail_Specificity', '간섭 피크 면적 ≤ 표준액 평균 면적의 0.5%')})\n"
+         f"2) 표준액의 주성분 피크와 분리도(Resolution)가 적절해야 한다."),
+         
+        ("직선성 (Linearity)", 
+         f"각 농도(X축)와 반응값(Y축)에 대한 회귀분석 결과:\n"
+         f"1) 결정계수(R²): {params.get('Detail_Linearity', '≥ 0.990')}\n"
+         f"2) Y절편 및 기울기의 타당성을 확인한다."),
+         
+        ("정확성 (Accuracy)", 
+         f"각 농도 레벨(80, 100, 120%)에서 3회 반복 측정한 결과:\n"
+         f"1) 평균 회수율(Recovery): {params.get('Detail_Accuracy', '80.0 ~ 120.0%')}\n"
+         f"   (회수율 = (실측농도 / 이론농도) × 100)"),
+         
+        ("정밀성 (Precision)", 
+         f"100% 농도 검액 6회 반복 측정 결과:\n"
+         f"1) 피크 면적의 상대표준편차(RSD): {params.get('Detail_Precision', '≤ 2.0%')}"),
+         
+        ("정량한계 (LOQ)", 
+         f"신호 대 잡음비(S/N Ratio) 측정법:\n"
+         f"1) S/N 비: {params.get('Detail_LOQ', '≥ 10')}")
     ]
-    for k, v in items:
-        row = t_crit.add_row().cells; row[0].text=k; row[1].text=str(v)
+    
+    for item, desc in criteria_details:
+        row = t_crit.add_row().cells
+        row[0].text = item
+        row[1].text = desc
 
-    # 5. 서명
+    # -----------------------------------------------------------
+    # 5. 승인 서명
+    # -----------------------------------------------------------
     doc.add_paragraph("\n\n")
     t_sign = doc.add_table(rows=2, cols=3); t_sign.style = 'Table Grid'
-    roles = ["작성자 (Analyzed By)", "검토자 (Reviewed By)", "승인자 (Approved By)"]
+    roles = ["작성자 (Prepared By)", "검토자 (Reviewed By)", "승인자 (Approved By)"]
     for i, r in enumerate(roles): 
         c = t_sign.rows[0].cells[i]; c.text = r; set_table_header_style(c)
         t_sign.rows[1].cells[i].text = "\n\n서명: _______________\n날짜: _______________\n"
