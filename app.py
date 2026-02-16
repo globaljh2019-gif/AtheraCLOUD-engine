@@ -264,7 +264,7 @@ def generate_smart_excel(method_name, category, params):
     actual_stock_ref = f"'1. Info'!B{r+5}" # Reference for other sheets
 
     # 2. SST Sheet
-    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
+    s_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
     for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
@@ -279,19 +279,13 @@ def generate_smart_excel(method_name, category, params):
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test', header)
-    ws_spec.write('A3', "Std Mean Area (from SST):", sub); ws_spec.write_formula('B3', "='2. SST'!C9", num)
-    ws_spec.write('C3', "Std Mean RT (from SST):", sub); ws_spec.write_formula('D3', "='2. SST'!B9", num)
-    
+    ws_spec.write('A3', "Std Mean Area:", sub); ws_spec.write('B3', "", calc) 
     ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
     for i, s in enumerate(["Blank", "Placebo"]):
         row = i + 6
         ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
-        ws_spec.write_formula(row, 3, f'=IF(OR(C{row+1}="", $B$3=""), "", ROUNDDOWN(C{row+1}/$B$3*100, 2))', auto)
-        ws_spec.write_formula(row, 4, f'=IF(D{row+1}="", "", IF(D{row+1}<=0.5, "Pass", "Fail"))', pass_fmt)
-        ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-
-    ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
-    ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")
+        ws_spec.write_formula(row, 3, f"=IF($B$3=\"\",\"\",ROUNDDOWN(C{row+1}/$B$3*100, 2))", auto)
+        ws_spec.write_formula(row, 4, f'=IF(D{row+1}<=0.5, "Pass", "Fail")', pass_fmt)
 
     # 4. Linearity Sheet (Corrected Formula Link)
     target_conc = params.get('Target_Conc')
@@ -500,8 +494,8 @@ with col2:
                                 st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (ROUNDDOWN & Auto-Check)")
-                st.info("✅ 1, 2, 3회차 표 분리 및 그래프 생성 + ROUNDDOWN 수식 적용 + 합격/불합격 자동 판정")
+                st.markdown("### 📗 스마트 엑셀 일지 (Final Fixed)")
+                st.info("✅ SST(Tailing Check), 특이성(Std 기준), 직선성(회차별 그래프), 정확성(자동 참조) 기능 탑재")
                 sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
