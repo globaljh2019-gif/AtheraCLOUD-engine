@@ -193,38 +193,31 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
     doc = Document(); set_korean_font(doc)
     
-    def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
-    target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
-    section = doc.sections[0]; header = section.header; 
-    htable = header.add_table(1, 2, Inches(6.0))
-    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
-    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0); title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Method Name: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER; doc.add_paragraph()
-    doc.add_heading('1. 목적', level=1); doc.add_paragraph(f"본 문서는 '{method_name}' 시험법의 밸리데이션 수행 방법 및 판정 기준을 기술한다.")
-    doc.add_heading('2. 근거', level=1); doc.add_paragraph("• ICH Q2(R2) & MFDS 가이드라인")
-    doc.add_heading('3. 기기 및 시약', level=1); t_cond = doc.add_table(rows=0, cols=2); t_cond.style = 'Table Grid'
-    for k, v in [("기기", safe_get('Instrument')), ("컬럼", safe_get('Column_Plate')), ("조건", f"A: {safe_get('Condition_A')}\nB: {safe_get('Condition_B')}"), ("검출기", safe_get('Detection'))]:
-        r = t_cond.add_row().cells; r[0].text=k; r[0].paragraphs[0].runs[0].bold=True; r[1].text=v
-    doc.add_heading('4. 밸리데이션 항목 및 기준', level=1); table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
-    headers = ["항목", "기준"]; 
-    for i, h in enumerate(headers): c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-    items = [("특이성", safe_get('Detail_Specificity')), ("직선성", safe_get('Detail_Linearity')), ("범위", safe_get('Detail_Range')), ("정확성", safe_get('Detail_Accuracy')), ("정밀성", safe_get('Detail_Precision')), ("완건성", safe_get('Detail_Robustness'))]
-    for k, v in items:
-        if v and "정보 없음" not in v: r = table.add_row().cells; r[0].text=k; r[1].text=v
-    doc.add_heading('5. 상세 시험 방법 (Procedures)', level=1)
-    doc.add_heading('5.1 용액 조제', level=2); doc.add_paragraph(f"1) 표준 모액: 농도 {stock_conc if stock_conc else '[입력필요]'} {unit} 용액을 준비한다.")
-    doc.add_heading('5.2 직선성', level=2); doc.add_paragraph(f"기준 농도 {target_conc} {unit}를 중심으로 80 ~ 120% 범위 내 5개 농도를 조제한다.")
-    if stock_conc and req_vol and float(stock_conc) >= float(target_conc) * 1.2:
-        t_lin = doc.add_table(rows=1, cols=4); t_lin.style = 'Table Grid'
-        for i, h in enumerate(["Level", "Target", "Stock (mL)", "Diluent (mL)"]): c = t_lin.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-        for level in [80, 90, 100, 110, 120]:
-            t_val = float(target_conc) * (level/100); s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
-            r = t_lin.add_row().cells; r[0].text=f"{level}%"; r[1].text=f"{t_val:.2f}"; r[2].text=f"{s_vol:.3f}"; r[3].text=f"{d_vol:.3f}"
-    doc.add_heading('5.3 정확성', level=2); doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 각 3회씩 독립적으로 조제한다.")
-    doc.add_paragraph("\n\n"); table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
-    for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-    for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
+    # Header
+    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
+    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol: {method_name}\n").bold = True
+    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+
+    doc.add_heading(f'밸리데이션 상세 계획서 ({method_name})', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+    
+    doc.add_heading('1. 목적 및 범위', level=1)
+    doc.add_paragraph("본 문서는 해당 시험법의 적합성을 검증하기 위한 상세 계획을 기술한다.")
+    
+    doc.add_heading('2. 기기 및 시약', level=1)
+    t_cond = doc.add_table(rows=2, cols=2); t_cond.style = 'Table Grid'
+    t_cond.rows[0].cells[0].text="기기"; t_cond.rows[0].cells[1].text=params.get('Instrument', 'N/A')
+    t_cond.rows[1].cells[0].text="컬럼"; t_cond.rows[1].cells[1].text=params.get('Column_Plate', 'N/A')
+    
+    doc.add_heading('3. 상세 시험 방법', level=1)
+    doc.add_paragraph("• 표준 모액 조제: SOP를 참조하여 정확히 조제한다.")
+    if stock_conc: doc.add_paragraph(f"  (예상 농도: {stock_conc})")
+    doc.add_paragraph(f"• 검액 조제: 기준 농도 {target_conc_override if target_conc_override else 'Target'} 수준으로 희석하여 사용한다.")
+    
+    doc.add_heading('4. 밸리데이션 항목 및 판정 기준 (Criteria)', level=1)
+    doc.add_paragraph("1) 특이성: 간섭 피크가 없을 것 (≤ 0.5%)\n2) 직선성: 결정계수(R²) ≥ 0.990\n3) 정확성: 회수율 80.0 ~ 120.0%\n4) 정밀성: RSD ≤ 2.0%")
+    
+    doc.add_paragraph("\n\n(이하 서명란 생략)")
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
