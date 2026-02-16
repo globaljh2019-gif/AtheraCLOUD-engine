@@ -264,7 +264,7 @@ def generate_smart_excel(method_name, category, params):
     actual_stock_ref = f"'1. Info'!B{r+5}" # Reference for other sheets
 
     # 2. SST Sheet
-    s_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
+    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
     for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
@@ -500,7 +500,7 @@ with col2:
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
                     st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
-
+                    
             with t3:
                 st.markdown("### 📊 최종 결과 보고서")
                 sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
