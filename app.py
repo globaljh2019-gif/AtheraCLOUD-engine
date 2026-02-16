@@ -330,8 +330,8 @@ def generate_smart_excel(method_name, category, params):
         ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # [Criteria Added]
-    ws_spec.write(15, 0, "※ Acceptance Criteria:", crit_fmt)
-    ws_spec.write(16, 0, "1) Interference Peak Area ≤ 0.5% of Standard Area")
+    ws_spec.write(14, 0, "※ Acceptance Criteria:", crit_fmt)
+    ws_spec.write(15, 0, "1) Interference Peak Area ≤ 0.5% of Standard Area")
 
     # 4. Linearity Sheet (Uses Actual Stock Conc)
     target_conc = params.get('Target_Conc')
@@ -392,6 +392,11 @@ def generate_smart_excel(method_name, category, params):
         ws2.write(row+2, 1, "R²:", sub); ws2.write_formula(row+2, 2, f"=ROUNDDOWN(RSQ(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
         ws2.write(row+2, 3, "Criteria (≥0.990):", sub); ws2.write_formula(row+2, 4, f'=IF(C{row+3}>=0.990, "Pass", "Fail")', pass_fmt)
 
+    # [Criteria Added]
+    ws2.write(row+4, 0, "※ Acceptance Criteria:", crit_fmt)
+    ws2.write(row+5, 0, "1) Coefficient of determination (R²) ≥ 0.990")
+    ws2.write(row+6, 0, "2) %RSD of peak areas at each level ≤ 5.0%")
+
     # 5. Accuracy Sheet
     ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:G', 15)
     ws_acc.merge_range('A1:G1', 'Accuracy Test (Recovery)', header)
@@ -415,6 +420,10 @@ def generate_smart_excel(method_name, category, params):
         ws_acc.write(row, 3, "Mean Rec(%):", sub)
         ws_acc.write_formula(row, 4, f"=ROUNDDOWN(AVERAGE(E{start_row+1}:E{row}), 1)", total_fmt) 
         row += 2
+
+    # [Criteria Added]
+    ws_acc.write(acc_row, 0, "※ Acceptance Criteria:", crit_fmt)
+    ws_acc.write(acc_row+1, 0, "1) Individual & Mean Recovery: 80.0 ~ 120.0%")
 
     # 6. Precision, 7. Robustness, 8. LOD/LOQ (Same as before)
     ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision', header)
