@@ -298,22 +298,7 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
     ws_sst.write('A15', "1) Retention Time & Area RSD ≤ 2.0%")
     ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
-
-    # 3. Specificity Sheet
-    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
-    ws_spec.merge_range('A1:E1', 'Specificity Test', header)
-    ws_spec.write('A3', "Std Mean Area (from SST):", sub); ws_spec.write_formula('B3', "='2. SST'!C9", num)
-    
-    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
-    for i, s in enumerate(["Blank", "Placebo"]):
-        row = i + 6
-        ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
-        ws_spec.write_formula(row, 3, f'=IF(OR(C{row+1}="", $B$3=""), "", ROUNDDOWN(C{row+1}/$B$3*100, 2))', auto)
-        ws_spec.write_formula(row, 4, f'=IF(D{row+1}="", "", IF(D{row+1}<=0.5, "Pass", "Fail"))', pass_fmt)
-        ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-
-    ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
-    ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")    
+ 
     # 3. Specificity Sheet (보완됨)
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test (Identification & Interference)', header)
