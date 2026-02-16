@@ -195,7 +195,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc = Document(); set_korean_font(doc)
     
     # -----------------------------------------------------------
-    # 1. 헤더 (Header) - 표 제거, 우측 정렬 텍스트만 표시
+    # 1. 헤더 (Header) - 문서 번호 및 날짜 (왼쪽 정렬로 변경)
     # -----------------------------------------------------------
     section = doc.sections[0]
     header = section.header
@@ -203,16 +203,16 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     # 문서 번호 생성
     doc_no = f"VP-{method_name[:3].upper()}-{datetime.now().strftime('%y%m%d')}"
     
-    # 우측 정렬로 문서 번호 및 날짜 입력
+    # [수정] 왼쪽 정렬 적용
     p_head = header.paragraphs[0]
-    p_head.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_head.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     run1 = p_head.add_run(f"Document No.: {doc_no}\n")
     run1.bold = True; run1.font.size = Pt(9)
     run2 = p_head.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
     run2.font.size = Pt(9)
 
     # -----------------------------------------------------------
-    # 2. 제목 및 개요
+    # 2. 표지 및 개요
     # -----------------------------------------------------------
     doc.add_paragraph() # 공백
     title = doc.add_heading('시험법 밸리데이션 상세 계획서', 0)
@@ -312,54 +312,60 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
 
     # [정밀성]
     doc.add_paragraph("다. 정밀성 (Precision)")
-    doc.add_paragraph(f"  기준 농도({t_conc} {unit})인 100% 레벨 검액을 6개 독립적으로 조제한다.")
     if s_conc > 0:
         p_vol = (t_conc * v_req) / s_conc
+        doc.add_paragraph(f"  기준 농도({t_conc} {unit})인 100% 레벨 검액을 6개 독립적으로 조제한다.")
         doc.add_paragraph(f"  (조제법: 표준 모액 {p_vol:.3f} mL를 취하여 {v_req} mL 부피 플라스크에 넣고 희석한다.) x 6회 반복")
 
     # -----------------------------------------------------------
-    # 4. 판정 기준 (Criteria) - 구체적 비교 대상 명시
+    # 4. 밸리데이션 항목 및 판정 기준 (서술식 & 분리)
     # -----------------------------------------------------------
-    doc.add_heading('4. 밸리데이션 항목 및 판정 기준 (Acceptance Criteria)', level=1)
+    doc.add_heading('4. 밸리데이션 항목 및 판정 기준 (Evaluation & Criteria)', level=1)
     
-    t_crit = doc.add_table(rows=1, cols=2); t_crit.style = 'Table Grid'
-    t_crit.rows[0].cells[0].text = "시험 항목 (Test Item)"
-    t_crit.rows[0].cells[1].text = "판정 기준 (Criteria) 및 평가 방법"
-    set_table_header_style(t_crit.rows[0].cells[0]); set_table_header_style(t_crit.rows[0].cells[1])
-    
-    # 구체적인 기준 문구 생성
-    criteria_details = [
-        ("특이성 (Specificity)", 
-         f"1) 공시험액(Blank) 및 위약(Placebo)에서 주성분 피크 위치에 간섭 피크가 없어야 한다.\n"
-         f"   (기준: {params.get('Detail_Specificity', '간섭 피크 면적 ≤ 표준액 평균 면적의 0.5%')})\n"
-         f"2) 표준액의 주성분 피크와 분리도(Resolution)가 적절해야 한다."),
-         
-        ("직선성 (Linearity)", 
-         f"각 농도(X축)와 반응값(Y축)에 대한 회귀분석 결과:\n"
-         f"1) 결정계수(R²): {params.get('Detail_Linearity', '≥ 0.990')}\n"
-         f"2) Y절편 및 기울기의 타당성을 확인한다."),
-         
-        ("정확성 (Accuracy)", 
-         f"각 농도 레벨(80, 100, 120%)에서 3회 반복 측정한 결과:\n"
-         f"1) 평균 회수율(Recovery): {params.get('Detail_Accuracy', '80.0 ~ 120.0%')}\n"
-         f"   (회수율 = (실측농도 / 이론농도) × 100)"),
-         
-        ("정밀성 (Precision)", 
-         f"100% 농도 검액 6회 반복 측정 결과:\n"
-         f"1) 피크 면적의 상대표준편차(RSD): {params.get('Detail_Precision', '≤ 2.0%')}"),
-         
-        ("정량한계 (LOQ)", 
-         f"신호 대 잡음비(S/N Ratio) 측정법:\n"
-         f"1) S/N 비: {params.get('Detail_LOQ', '≥ 10')}")
-    ]
-    
-    for item, desc in criteria_details:
-        row = t_crit.add_row().cells
-        row[0].text = item
-        row[1].text = desc
+    # 4.1 특이성
+    doc.add_heading('4.1 특이성 (Specificity)', level=2)
+    doc.add_paragraph("1) 평가 방법 (Evaluation Method)")
+    doc.add_paragraph("   공시험액(Blank), 위약(Placebo), 표준액을 각각 분석하여 크로마토그램을 비교한다. 주성분 피크의 머무름 시간(RT)에 간섭하는 피크가 있는지 확인한다.")
+    doc.add_paragraph("2) 판정 기준 (Acceptance Criteria)")
+    crit_spec = params.get('Detail_Specificity', "간섭 피크 면적 ≤ 표준액 평균 면적의 0.5%")
+    doc.add_paragraph(f"   - 공시험액 및 위약에서 주성분 피크와 겹치는 간섭 피크가 없거나, 검출되더라도 그 면적이 {crit_spec} 이어야 한다.")
+
+    # 4.2 직선성
+    doc.add_heading('4.2 직선성 (Linearity)', level=2)
+    doc.add_paragraph("1) 평가 방법 (Evaluation Method)")
+    doc.add_paragraph(f"   {t_conc} {unit} 농도를 기준으로 80 ~ 120% 범위 내 5개 농도의 표준액을 분석한다. 농도(X축)와 피크 면적(Y축)에 대한 회귀분석을 수행하여 상관계수(R) 및 결정계수(R²)를 구한다.")
+    doc.add_paragraph("2) 판정 기준 (Acceptance Criteria)")
+    crit_lin = params.get('Detail_Linearity', "결정계수(R²) ≥ 0.990")
+    doc.add_paragraph(f"   - {crit_lin}")
+    doc.add_paragraph("   - Y절편과 기울기가 타당한 수준이어야 한다.")
+
+    # 4.3 정확성
+    doc.add_heading('4.3 정확성 (Accuracy)', level=2)
+    doc.add_paragraph("1) 평가 방법 (Evaluation Method)")
+    doc.add_paragraph("   기준 농도의 80%, 100%, 120% 수준에서 각각 3회씩 조제하여 분석한다. 각 검액의 실측 농도를 이론 농도로 나누어 회수율(Recovery, %)을 계산한다.")
+    doc.add_paragraph("2) 판정 기준 (Acceptance Criteria)")
+    crit_acc = params.get('Detail_Accuracy', "회수율 80.0 ~ 120.0%")
+    doc.add_paragraph(f"   - 각 농도별 평균 회수율 및 전체 평균 회수율이 {crit_acc} 이내여야 한다.")
+    doc.add_paragraph("   - 각 농도별 회수율의 상대표준편차(RSD)가 적절해야 한다.")
+
+    # 4.4 정밀성
+    doc.add_heading('4.4 정밀성 (Precision)', level=2)
+    doc.add_paragraph("1) 평가 방법 (Evaluation Method)")
+    doc.add_paragraph("   기준 농도(100%)에 해당하는 검액을 6개 독립적으로 조제하여 분석한다. 6회 결과에 대한 피크 면적의 상대표준편차(RSD)를 계산한다.")
+    doc.add_paragraph("2) 판정 기준 (Acceptance Criteria)")
+    crit_prec = params.get('Detail_Precision', "RSD ≤ 2.0%")
+    doc.add_paragraph(f"   - 피크 면적의 {crit_prec}")
+
+    # 4.5 정량한계
+    doc.add_heading('4.5 검출 및 정량한계 (LOD & LOQ)', level=2)
+    doc.add_paragraph("1) 평가 방법 (Evaluation Method)")
+    doc.add_paragraph("   신호 대 잡음비(Signal-to-Noise Ratio, S/N) 방식을 이용한다. 예상되는 저농도 용액을 분석하여 S/N 비를 측정한다.")
+    doc.add_paragraph("2) 판정 기준 (Acceptance Criteria)")
+    crit_loq = params.get('Detail_LOQ', "LOD S/N ≥ 3, LOQ S/N ≥ 10")
+    doc.add_paragraph(f"   - {crit_loq}")
 
     # -----------------------------------------------------------
-    # 5. 승인 서명
+    # 5. 서명
     # -----------------------------------------------------------
     doc.add_paragraph("\n\n")
     t_sign = doc.add_table(rows=2, cols=3); t_sign.style = 'Table Grid'
