@@ -191,34 +191,167 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
 
 # [PROTOCOL]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
-    doc = Document(); set_korean_font(doc)
+    doc = Document()
+    set_korean_font(doc) # 한글 폰트 적용
     
-    # Header
-    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
-    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol: {method_name}\n").bold = True
-    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+    # -----------------------------------------------------------
+    # 1. 헤더 (Header) - 문서 번호, 가이드라인 등 표시
+    # -----------------------------------------------------------
+    section = doc.sections[0]
+    header = section.header
+    
+    # 헤더 테이블 생성 (2행 2열)
+    htable = header.add_table(rows=2, cols=2, width=Inches(6.5))
+    htable.style = 'Table Grid'
+    
+    # 문서 번호 생성 (예: VP-2024-001)
+    doc_no = f"VP-{datetime.now().strftime('%y%m')}-{random.randint(10,99)}"
+    
+    # 헤더 내용 채우기
+    c00 = htable.cell(0, 0); c00.text = "Document No."; c00.paragraphs[0].runs[0].bold = True
+    c01 = htable.cell(0, 1); c01.text = doc_no; c01.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    c10 = htable.cell(1, 0); c10.text = "Reference Guideline"; c10.paragraphs[0].runs[0].bold = True
+    ref_guide = params.get('Reference_Guideline', 'ICH Q2(R2) / MFDS Val. Guide')
+    c11 = htable.cell(1, 1); c11.text = ref_guide; c11.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    doc.add_heading(f'밸리데이션 상세 계획서 ({method_name})', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # -----------------------------------------------------------
+    # 2. 제목 및 개요
+    # -----------------------------------------------------------
+    doc.add_paragraph() # 공백
+    title = doc.add_heading(f'시험법 밸리데이션 상세 계획서\n(Validation Protocol)', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # 시험명 표시
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p_sub.add_run(f"Test Method: {method_name}")
+    run.bold = True
+    run.font.size = Pt(12)
     doc.add_paragraph()
+
+    # 1. 목적
+    doc.add_heading('1. 목적 (Objective)', level=1)
+    doc.add_paragraph(f"본 계획서는 '{method_name}' 시험법이 의약품 품질 관리에 적합함을 증명하기 위한 "
+                      f"구체적인 시험 방법, 절차 및 판정 기준을 규정하는 데 목적이 있다.")
+
+    # 2. 적용 범위
+    doc.add_heading('2. 적용 범위 (Scope)', level=1)
+    doc.add_paragraph(f"본 문서는 {category} 시험 항목에 대한 밸리데이션 수행 시 적용된다.")
+
+    # -----------------------------------------------------------
+    # 3. 기기 및 분석 조건 (상세)
+    # -----------------------------------------------------------
+    doc.add_heading('3. 기기 및 분석 조건 (Instruments & Conditions)', level=1)
+    doc.add_paragraph("본 시험에 사용하는 주요 기기 및 분석 조건은 다음과 같다.")
     
-    doc.add_heading('1. 목적 및 범위', level=1)
-    doc.add_paragraph("본 문서는 해당 시험법의 적합성을 검증하기 위한 상세 계획을 기술한다.")
+    t_cond = doc.add_table(rows=6, cols=2); t_cond.style = 'Table Grid'
     
-    doc.add_heading('2. 기기 및 시약', level=1)
-    t_cond = doc.add_table(rows=2, cols=2); t_cond.style = 'Table Grid'
-    t_cond.rows[0].cells[0].text="기기"; t_cond.rows[0].cells[1].text=params.get('Instrument', 'N/A')
-    t_cond.rows[1].cells[0].text="컬럼"; t_cond.rows[1].cells[1].text=params.get('Column_Plate', 'N/A')
+    # 파라미터 가져오기 (없으면 N/A)
+    inst = params.get('Instrument', 'HPLC / UPLC System')
+    col = params.get('Column_Plate', 'C18 Column (Specifics TBD)')
+    mob_a = params.get('Condition_A', 'Water with 0.1% TFA')
+    mob_b = params.get('Condition_B', 'Acetonitrile with 0.1% TFA')
+    detect = params.get('Detection', 'UV / MS')
     
-    doc.add_heading('3. 상세 시험 방법', level=1)
-    doc.add_paragraph("• 표준 모액 조제: SOP를 참조하여 정확히 조제한다.")
-    if stock_conc: doc.add_paragraph(f"  (예상 농도: {stock_conc})")
-    doc.add_paragraph(f"• 검액 조제: 기준 농도 {target_conc_override if target_conc_override else 'Target'} 수준으로 희석하여 사용한다.")
+    conditions = [
+        ("사용 기기 (Instrument)", inst),
+        ("컬럼 (Column)", col),
+        ("이동상 A (Mobile Phase A)", mob_a),
+        ("이동상 B (Mobile Phase B)", mob_b),
+        ("검출기 (Detector)", detect),
+        ("유속 및 온도 (Flow/Temp)", "See Method File (SOP)")
+    ]
     
-    doc.add_heading('4. 밸리데이션 항목 및 판정 기준 (Criteria)', level=1)
-    doc.add_paragraph("1) 특이성: 간섭 피크가 없을 것 (≤ 0.5%)\n2) 직선성: 결정계수(R²) ≥ 0.990\n3) 정확성: 회수율 80.0 ~ 120.0%\n4) 정밀성: RSD ≤ 2.0%")
+    for i, (k, v) in enumerate(conditions):
+        t_cond.rows[i].cells[0].text = k
+        t_cond.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+        t_cond.rows[i].cells[1].text = str(v)
+        set_table_header_style(t_cond.rows[i].cells[0]) # 쉐이딩 적용
+
+    # -----------------------------------------------------------
+    # 4. 시약 및 용액 조제 (SOP 스타일)
+    # -----------------------------------------------------------
+    doc.add_heading('4. 시약 및 용액 조제 (Preparation of Solutions)', level=1)
+    doc.add_paragraph("모든 용액은 밸리데이션 된 분석용 저울과 A등급 초자(Volumetric flask)를 사용하여 조제한다.")
+
+    # 4.1 희석액
+    doc.add_heading('4.1 희석액 (Diluent)', level=2)
+    doc.add_paragraph("이동상 A와 이동상 B를 혼합하여 제조하거나, 시험법에 규정된 용매를 사용한다. "
+                      "제조 후 0.45 µm 멤브레인 필터로 여과하고 탈기하여 사용한다.")
+
+    # 4.2 공시험액 (Blank)
+    doc.add_heading('4.2 공시험액 (Blank Solution)', level=2)
+    doc.add_paragraph("4.1항에서 제조한 희석액(Diluent)을 바이알에 담아 공시험액으로 한다. "
+                      "시스템의 노이즈 확인 및 특이성 시험(간섭 피크 확인)에 사용한다.")
+
+    # 4.3 위약 (Placebo)
+    doc.add_heading('4.3 위약액 (Placebo Solution)', level=2)
+    doc.add_paragraph("완제의약품 조성에서 주성분(API)만을 제외한 기제(Matrix)를 정밀하게 달아 희석액에 녹여 조제한다. "
+                      "필요 시 초음파 추출 등을 통해 완전히 용해시킨 후 필터링하여 사용한다.")
+
+    # 4.4 표준액 (Standard) - [계산 로직 반영]
+    doc.add_heading('4.4 표준액 (Standard Solution)', level=2)
+    if stock_conc and target_conc_override:
+        try:
+            s_val = float(stock_conc); t_val = float(target_conc_override)
+            doc.add_paragraph(f"1) 표준 모액 (Stock): 표준품을 정밀하게 달아 {s_val} {params.get('Unit','mg/mL')} 농도가 되도록 조제한다.")
+            doc.add_paragraph(f"2) 표준액 (Working Std): 위 모액을 희석하여 최종 농도가 {t_val} {params.get('Unit','mg/mL')} (100% 수준)이 되도록 조제한다.")
+        except:
+            doc.add_paragraph("표준품을 정밀하게 달아 규정된 농도로 희석하여 조제한다.")
+    else:
+        doc.add_paragraph("표준품을 정밀하게 달아 규정된 농도(Target Concentration)가 되도록 희석액으로 용해하여 조제한다.")
+
+    # 4.5 검액 (Sample)
+    doc.add_heading('4.5 검액 (Sample Solution)', level=2)
+    doc.add_paragraph("검체 적당량을 정밀하게 달아 희석액을 넣고 추출/용해하여, 최종 농도가 표준액 농도와 동일하도록 조제한다.")
+
+    # -----------------------------------------------------------
+    # 5. 밸리데이션 항목 및 기준 (Criteria)
+    # -----------------------------------------------------------
+    doc.add_heading('5. 밸리데이션 항목 및 판정 기준 (Criteria)', level=1)
     
-    doc.add_paragraph("\n\n(이하 서명란 생략)")
-    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    t_crit = doc.add_table(rows=1, cols=3); t_crit.style = 'Table Grid'
+    t_crit.autofit = False
+    t_crit.allow_autofit = False
+    
+    # 테이블 헤더
+    cols = t_crit.rows[0].cells
+    cols[0].text = "항목 (Parameter)"; cols[1].text = "시험 방법 (Procedure)"; cols[2].text = "판정 기준 (Acceptance Criteria)"
+    for c in cols: set_table_header_style(c)
+    
+    # 항목별 내용 (DB 파라미터 연동)
+    items = [
+        ("특이성\n(Specificity)", "Blank, Placebo, Standard 비교", params.get('Detail_Specificity', '간섭 피크 ≤ 0.5%')),
+        ("직선성\n(Linearity)", "5개 농도 구간 (80~120%)", params.get('Detail_Linearity', 'R² ≥ 0.990')),
+        ("정확성\n(Accuracy)", "3개 농도, 각 3회 반복 (Rec %)", params.get('Detail_Accuracy', '80.0 ~ 120.0%')),
+        ("정밀성\n(Precision)", "반복성(Repeatability, n=6)", params.get('Detail_Precision', 'RSD ≤ 2.0%')),
+        ("검출/정량한계\n(LOD/LOQ)", "S/N 비 측정법", params.get('Detail_LOD', 'LOD S/N≥3, LOQ S/N≥10'))
+    ]
+    
+    for param, proc, crit in items:
+        row = t_crit.add_row().cells
+        row[0].text = param
+        row[1].text = proc
+        row[2].text = str(crit)
+
+    # -----------------------------------------------------------
+    # 6. 서명 (Signature)
+    # -----------------------------------------------------------
+    doc.add_paragraph("\n")
+    doc.add_paragraph("위 계획서의 내용을 검토하고 승인함.")
+    
+    t_sign = doc.add_table(rows=2, cols=3); t_sign.style = 'Table Grid'
+    headers = ["작성자 (Prepared By)", "검토자 (Reviewed By)", "승인자 (Approved By)"]
+    for i, h in enumerate(headers): 
+        c = t_sign.rows[0].cells[i]; c.text = h; set_table_header_style(c)
+    
+    for i in range(3): 
+        t_sign.rows[1].cells[i].text = "\n\n서명: __________________\n날짜: __________________\n"
+
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
     return doc_io
 
 # [Excel 생성 함수 - Smart Logbook (ACTUAL WEIGHT & CORRECTION LOGIC)]
