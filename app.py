@@ -246,7 +246,15 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
 
 # [PROTOCOL]
 def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
-    doc = Document(); set_korean_font(doc)
+    doc = Document()
+    
+    # -----------------------------------------------------------
+    # [글꼴 설정] 한글: 맑은 고딕, 영어/숫자: Times New Roman
+    # -----------------------------------------------------------
+    style = doc.styles['Normal']
+    style.font.name = 'Times New Roman'  # 기본(영어/숫자)
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic') # 한글용
+    style.font.size = Pt(10)
     
     # -----------------------------------------------------------
     # 1. 헤더 (Header) - 문서 번호 및 날짜 (왼쪽 정렬로 변경)
@@ -266,7 +274,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     run2.font.size = Pt(9)
 
     # -----------------------------------------------------------
-    # 2. 표지 및 개요
+    # 2. 제목 및 개요
     # -----------------------------------------------------------
     doc.add_paragraph() # 공백
     title = doc.add_heading('시험법 밸리데이션 상세 계획서', 0)
@@ -302,9 +310,12 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc.add_heading('3. 상세 시험 방법 (Test Procedure)', level=1)
     
     # 변수 설정 (입력값 없으면 기본값 1.0)
-    s_conc = float(stock_conc) if stock_conc and float(stock_conc) > 0 else 1.0
-    t_conc = float(target_conc_override) if target_conc_override and float(target_conc_override) > 0 else 1.0
-    v_req = float(req_vol) if req_vol and float(req_vol) > 0 else 10.0
+    try:
+        s_conc = float(stock_conc) if stock_conc else 0.0
+        t_conc = float(target_conc_override) if target_conc_override else 1.0
+        v_req = float(req_vol) if req_vol else 10.0
+    except:
+        s_conc = 0.0; t_conc = 1.0; v_req = 10.0
     unit = params.get('Unit', 'mg/mL')
 
     # 3.1 공통 조제 (Stock)
@@ -364,12 +375,41 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc.add_paragraph("  - 직선성: 각 레벨별 1회 조제하여 분석.")
     doc.add_paragraph("  - 정확성: 80%, 100%, 120% 레벨은 각각 3회씩 독립적으로 조제하여 분석한다.")
 
-    # [정밀성]
-    doc.add_paragraph("다. 정밀성 (Precision)")
-    if s_conc > 0:
-        p_vol = (t_conc * v_req) / s_conc
-        doc.add_paragraph(f"  기준 농도({t_conc} {unit})인 100% 레벨 검액을 6개 독립적으로 조제한다.")
-        doc.add_paragraph(f"  (조제법: 표준 모액 {p_vol:.3f} mL를 취하여 {v_req} mL 부피 플라스크에 넣고 희석한다.) x 6회 반복")
+    # [3.4 정밀성] - 상세 조제표
+    doc.add_heading('3.4 정밀성 (Precision)', level=2)
+    doc.add_paragraph("기준 농도(100%) 검액을 6회 독립적으로 조제한다.")
+    
+    t_prec = doc.add_table(rows=2, cols=5); t_prec.style = 'Table Grid'
+    ph = ["Sample ID", "Level", "Stock (mL)", "Total (mL)", "반복 횟수"]
+    for i, h in enumerate(ph): t_prec.rows[0].cells[i].text = h; set_table_header_style(t_prec.rows[0].cells[i])
+    
+    pr = t_prec.rows[1].cells
+    p_vol = (t_conc * v_req) / s_conc if s_conc > 0 else 0
+    pr[0].text = "Precision Spl"; pr[1].text = "100%"; pr[2].text = f"{p_vol:.3f}"
+    pr[3].text = f"{v_req:.1f}"; pr[4].text = "n = 6"
+
+    # [3.5 완건성] - 상세 내용
+    doc.add_heading('3.5 완건성 (Robustness)', level=2)
+    doc.add_paragraph("표준액(100%)을 사용하여 아래 조건 변경 시 영향을 평가한다.")
+    doc.add_paragraph(f"• 시료 조제: 정밀성 시험과 동일하게 100% 농도({t_conc} {unit})로 조제한 표준액 사용.")
+    doc.add_paragraph("• 변경 조건: 유속(±0.1 mL/min), 컬럼 온도(±2℃) 등 (SOP 참조)")
+
+    # [3.6 LOD/LOQ] - 상세 조제표
+    doc.add_heading('3.6 검출 및 정량한계 (LOD/LOQ)', level=2)
+    doc.add_paragraph("저농도 구간(예: 1%, 0.5%)을 조제하여 S/N 비를 확인한다.")
+    
+    t_lod = doc.add_table(rows=1, cols=5); t_lod.style = 'Table Grid'
+    lh = ["구분", "추정 Level", "농도", "Stock (mL)", "Total (mL)"]
+    for i, h in enumerate(lh): t_lod.rows[0].cells[i].text = h; set_table_header_style(t_lod.rows[0].cells[i])
+    
+    for lvl in [1.0, 0.5]: # 1%, 0.5% 가정
+        lr = t_lod.add_row().cells
+        ltgt = t_conc * (lvl/100)
+        lvs = (ltgt * v_req) / s_conc if s_conc > 0 else 0
+        tag = "LOQ (예상)" if lvl==1.0 else "LOD (예상)"
+        lr[0].text = tag; lr[1].text = f"{lvl}%"; lr[2].text = f"{ltgt:.4f}"
+        lr[3].text = f"{lvs:.4f}"; lr[4].text = f"{v_req:.1f}"
+    doc.add_paragraph("※ 필요 시 중간 희석액을 제조하여 단계 희석한다.")
 
     # -----------------------------------------------------------
     # 4. 밸리데이션 항목 및 판정 기준 (서술식 & 분리)
