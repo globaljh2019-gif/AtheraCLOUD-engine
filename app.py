@@ -136,6 +136,8 @@ def generate_vmp_premium(modality, phase, df_strategy):
 # [Master Recipe Excel]
 def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req_vol, sample_type, powder_info=""):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    
+    # [스타일]
     title_fmt = workbook.add_format({'bold':True, 'font_size': 14, 'align':'center', 'valign':'vcenter', 'bg_color': '#44546A', 'font_color': 'white'})
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
     section_title = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC000', 'font_size':11, 'align':'left'}) 
@@ -144,8 +146,11 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.000', 'align':'center'})
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
+    
     ws = workbook.add_worksheet("Master Recipe")
     ws.set_column('A:A', 35); ws.set_column('B:E', 15); ws.set_column('F:F', 12)
+    
+    # [기본 정보]
     ws.merge_range('A1:F1', f'Validation Material Planner: {method_name}', title_fmt)
     ws.write('A3', "Sample Type:", sub); ws.write('B3', sample_type, cell)
     if sample_type == "Powder (파우더)": ws.write('C3', "Prep Detail:", sub); ws.write_string('D3', powder_info, cell)
@@ -154,6 +159,8 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
     ws.write('A6', "Target Vol/Vial (mL):", sub); ws.write('B6', req_vol, num)
     ws.write('D6', "TOTAL STOCK NEEDED (mL):", sub)
     row = 8
+
+    # [공통 섹션 생성 함수]
     def add_section_grouped(main_title, levels, reps):
         nonlocal row
         ws.merge_range(row, 0, row, 5, f"■ {main_title}", header); row += 1
@@ -161,32 +168,79 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
         for rep in range(1, reps + 1):
             ws.merge_range(row, 0, row, 5, f"{main_title.split(' ')[0]} - {rep}회차 조제 (Set {rep})", section_title); row += 1
             ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub); row += 1
+            
+            # 수식 범위를 위한 시작 행 저장 (현재 row는 Python index이므로 Excel row는 +1)
+            start_excel_row = row + 1
+
             for level in levels:
                 t_val = float(target_conc) * (level / 100)
-                if float(stock_conc) < t_val: s_vol = "Error"
-                else: s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
-                ws.write(row, 0, f"{main_title.split(' ')[0]}-{level}%-R{rep}", cell); ws.write(row, 1, t_val, num)
-                if isinstance(s_vol, str): ws.write(row, 2, s_vol, total_fmt); ws.write(row, 3, "N/A", total_fmt)
-                else: ws.write(row, 2, s_vol, auto); ws.write(row, 3, d_vol, auto)
-                ws.write(row, 4, float(req_vol), num); ws.write(row, 5, "□", cell); row += 1
+                if float(stock_conc) < t_val: 
+                    s_vol = "Error"
+                else: 
+                    s_vol = (t_val * float(req_vol)) / float(stock_conc)
+                    d_vol = float(req_vol) - s_vol
+                
+                ws.write(row, 0, f"{main_title.split(' ')[0]}-{level}%-R{rep}", cell)
+                ws.write(row, 1, t_val, num)
+                
+                if isinstance(s_vol, str): 
+                    ws.write(row, 2, s_vol, total_fmt)
+                    ws.write(row, 3, "N/A", total_fmt)
+                else: 
+                    ws.write(row, 2, s_vol, auto)
+                    ws.write(row, 3, d_vol, auto)
+                
+                ws.write(row, 4, float(req_vol), num)
+                ws.write(row, 5, "□", cell)
+                row += 1
+            
+            # 수식 범위를 위한 끝 행 저장 (데이터 마지막 줄)
+            end_excel_row = row
+
+            # [수정완료] 합계 수식: C{start}:C{end}
             ws.write(row, 1, f"[{rep}회차] 소요 Stock:", sub)
-            if isinstance(s_vol, str): ws.write(row, 2, "Error", total_fmt)
-            else: ws.write_formula(row, 2, f"=SUM(C{row-len(levels)}:C{row-1})", total_fmt)
+            if isinstance(s_vol, str): 
+                ws.write(row, 2, "Error", total_fmt)
+            else: 
+                ws.write_formula(row, 2, f"=SUM(C{start_excel_row}:C{end_excel_row})", total_fmt)
             row += 2
+
+    # [섹션별 데이터 생성]        
     add_section_grouped("1. 시스템 적합성 (SST)", [100], 1)
     add_section_grouped("2. 특이성 (Specificity)", [100], 1)
     add_section_grouped("3. 직선성 (Linearity)", [80, 90, 100, 110, 120], 3)
     add_section_grouped("4. 정확성 (Accuracy)", [80, 100, 120], 3)
+    
+    # [정밀성 섹션]
     ws.merge_range(row, 0, row, 5, "■ 5. 정밀성 (Repeatability)", header); row += 2
     ws.merge_range(row, 0, row, 5, "반복성 시험 세트 (n=6)", section_title); row += 1
     ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub); row += 1
-    p_start = row
+    
+    p_start_excel = row + 1 # 정밀성 데이터 시작 행 (Excel 기준)
+    
     for i in range(1, 7):
-        t_val = float(target_conc); s_vol = (t_val * float(req_vol)) / float(stock_conc); d_vol = float(req_vol) - s_vol
-        ws.write(row, 0, f"Prec-100%-{i}", cell); ws.write(row, 1, t_val, num); ws.write(row, 2, s_vol, auto); ws.write(row, 3, d_vol, auto); ws.write(row, 4, float(req_vol), num); ws.write(row, 5, "□", cell); row += 1
-    ws.write(row, 1, "[정밀성] 소요 Stock:", sub); ws.write_formula(row, 2, f"=SUM(C{p_start}:C{row-1})", total_fmt); row += 2
-    add_section_grouped("7. 완건성 (Robustness)", [100], 3); add_section_grouped("8. LOD/LOQ", [1, 0.5], 3)
+        t_val = float(target_conc)
+        s_vol = (t_val * float(req_vol)) / float(stock_conc)
+        d_vol = float(req_vol) - s_vol
+        
+        ws.write(row, 0, f"Prec-100%-{i}", cell)
+        ws.write(row, 1, t_val, num)
+        ws.write(row, 2, s_vol, auto)
+        ws.write(row, 3, d_vol, auto)
+        ws.write(row, 4, float(req_vol), num)
+        ws.write(row, 5, "□", cell)
+        row += 1
+        
+    p_end_excel = row # 정밀성 데이터 끝 행
+    ws.write(row, 1, "[정밀성] 소요 Stock:", sub)
+    ws.write_formula(row, 2, f"=SUM(C{p_start_excel}:C{p_end_excel})", total_fmt); row += 2
+    
+    add_section_grouped("7. 완건성 (Robustness)", [100], 3)
+    add_section_grouped("8. LOD/LOQ", [1, 0.5], 3)
+    
+    # 전체 합계 (단순 합산)
     ws.write_formula('E6', f"=SUM(C9:C{row})", workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FF0000', 'font_color':'white', 'num_format':'0.00', 'align':'center'}))
+    
     workbook.close(); output.seek(0)
     return output
 
