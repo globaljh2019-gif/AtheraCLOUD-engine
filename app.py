@@ -421,10 +421,6 @@ def generate_smart_excel(method_name, category, params):
         ws_acc.write_formula(row, 4, f"=ROUNDDOWN(AVERAGE(E{start_row+1}:E{row}), 1)", total_fmt) 
         row += 2
 
-    # [Criteria Added]
-    ws_acc.write(acc_row, 0, "※ Acceptance Criteria:", crit_fmt)
-    ws_acc.write(acc_row+1, 0, "1) Individual & Mean Recovery: 80.0 ~ 120.0%")
-
     # 6. Precision, 7. Robustness, 8. LOD/LOQ (Same as before)
     ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision', header)
     ws3.merge_range('A3:E3', "■ Day 1 (Repeatability)", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
