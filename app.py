@@ -280,7 +280,8 @@ def generate_smart_excel(method_name, category, params):
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test', header)
-    ws_spec.write('A3', "Std Mean Area:", sub); ws_spec.write('B3', "", calc) 
+    ws_spec.write('A3', "Std Mean Area (Ref. SST):", sub)
+    ws_spec.write_formula('B3', "='2. SST'!C9", num) 
     ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
     for i, s in enumerate(["Blank", "Placebo"]):
         row = i + 6
