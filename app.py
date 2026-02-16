@@ -399,27 +399,33 @@ def generate_smart_excel(method_name, category, params):
 
     # 5. Accuracy Sheet
     ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:G', 15)
-    ws_acc.merge_range('A1:G1', 'Accuracy Test (Recovery)', header)
-    ws_acc.write('E3', "Slope:", sub); ws_acc.write_formula('F3', slope_cell, calc) 
-    ws_acc.write('E4', "Int:", sub); ws_acc.write_formula('F4', int_cell, calc)
-    row = 7
+    ws_acc.merge_range('A1:G1', 'Accuracy (Recovery)', header)
+    
+    # Reference Linearity Slope/Int
+    ws_acc.write('E3', "Slope:", sub); ws_acc.write_formula('F3', f"='4. Linearity'!C{row+1}", auto)
+    ws_acc.write('E4', "Int:", sub); ws_acc.write_formula('F4', f"='4. Linearity'!C{row+2}", auto)
+    ws_acc.write('G3', "(From Linearity)", cell)
+    
+    acc_row = 6
     for level in [80, 100, 120]:
-        ws_acc.merge_range(row, 0, row, 6, f"■ Level {level}% (3 Reps)", sub_rep); row += 1
-        ws_acc.write_row(row, 0, ["Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)", "Criteria", "Result"], sub); row += 1
-        start_row = row
+        ws_acc.merge_range(acc_row, 0, acc_row, 6, f"■ Level {level}% (3 Reps)", sub_rep); acc_row += 1
+        ws_acc.write_row(acc_row, 0, ["Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)", "Criteria", "Result"], sub); acc_row += 1
+        start_r = acc_row
         for rep in range(1, 4):
-            ws_acc.write(row, 0, rep, cell)
-            # Theo Conc also links to Actual Stock
-            ws_acc.write_formula(row, 1, f"=ROUNDDOWN({actual_stock_ref} * ({level}/100), 3)", num)
-            ws_acc.write(row, 2, "", calc)
-            ws_acc.write_formula(row, 3, f"=IF(C{row+1}=\"\",\"\",ROUNDDOWN((C{row+1}-$F$4)/$F$3, 3))", auto)
-            ws_acc.write_formula(row, 4, f"=IF(D{row+1}=\"\",\"\",ROUNDDOWN(D{row+1}/B{row+1}*100, 1))", auto)
-            ws_acc.write(row, 5, "80~120%", cell)
-            ws_acc.write_formula(row, 6, f'=IF(AND(E{row+1}>=80, E{row+1}<=120), "Pass", "Fail")', pass_fmt)
-            row += 1
-        ws_acc.write(row, 3, "Mean Rec(%):", sub)
-        ws_acc.write_formula(row, 4, f"=ROUNDDOWN(AVERAGE(E{start_row+1}:E{row}), 1)", total_fmt) 
-        row += 2
+            ws_acc.write(acc_row, 0, rep, cell)
+            # Theo Conc Formula
+            ws_acc.write_formula(acc_row, 1, f"=ROUNDDOWN({actual_stock_ref} * ({level}/100), 3)", num3)
+            ws_acc.write(acc_row, 2, "", calc)
+            ws_acc.write_formula(acc_row, 3, f'=IF(C{acc_row+1}="","",ROUNDDOWN((C{acc_row+1}-$F$4)/$F$3, 3))', auto)
+            ws_acc.write_formula(acc_row, 4, f'=IF(D{acc_row+1}="","",ROUNDDOWN(D{acc_row+1}/B{acc_row+1}*100, 1))', auto)
+            ws_acc.write(acc_row, 5, "80~120%", cell)
+            ws_acc.write_formula(acc_row, 6, f'=IF(E{acc_row+1}="","",IF(AND(E{acc_row+1}>=80, E{acc_row+1}<=120), "Pass", "Fail"))', pass_fmt)
+            ws_acc.conditional_format(f'G{acc_row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt}); acc_row += 1
+        ws_acc.write(acc_row, 3, "Mean Rec(%):", sub); ws_acc.write_formula(acc_row, 4, f"=ROUNDDOWN(AVERAGE(E{start_r+1}:E{acc_row}), 1)", total_fmt); acc_row += 2
+    
+    # [Criteria Added]
+    ws_acc.write(acc_row, 0, "※ Acceptance Criteria:", crit_fmt)
+    ws_acc.write(acc_row+1, 0, "1) Individual & Mean Recovery: 80.0 ~ 120.0%")
 
     # 6. Precision, 7. Robustness, 8. LOD/LOQ (Same as before)
     ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision', header)
