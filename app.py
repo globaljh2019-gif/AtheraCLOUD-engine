@@ -242,27 +242,43 @@ def generate_smart_excel(method_name, category, params):
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.0', 'align':'center'})
 
-    # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
-    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
-    r = 3; 
-    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
-    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
+    # -----------------------------------------------------------
+    # [Sheet 1] 1. Info
+    # -----------------------------------------------------------
+    ws1 = workbook.add_worksheet("1. Info")
+    ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
+    ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     
-    # Actual Stock Prep Section
-    r += 3
-    ws1.merge_range(r, 0, r, 4, "■ Standard Stock Solution Preparation (보정값 적용)", sub_rep); r+=1
-    ws1.write(r, 0, "Purity (Potency, %):", sub); ws1.write(r, 1, "", calc); ws1.write(r, 2, "%", cell)
-    ws1.write(r+1, 0, "Water Content (%):", sub); ws1.write(r+1, 1, 0, calc); ws1.write(r+1, 2, "% (If applicable)", cell)
-    ws1.write(r+2, 0, "Actual Weight (mg):", sub); ws1.write(r+2, 1, "", calc); ws1.write(r+2, 2, "mg", cell)
-    ws1.write(r+3, 0, "Final Volume (mL):", sub); ws1.write(r+3, 1, "", calc); ws1.write(r+3, 2, "mL", cell)
-    ws1.write(r+4, 0, "Actual Stock Conc (mg/mL):", sub)
-    # Actual Conc = (Weight * (Purity/100) * ((100-Water)/100)) / Vol
-    # Assuming B11=Purity, B12=Water, B13=Weight, B14=Vol
-    # Formula Row Index: r is variable. Purity at r, Weight at r+2.
-    purity_cell = f"B{r+1}"; water_cell = f"B{r+2}"; weight_cell = f"B{r+3}"; vol_cell = f"B{r+4}"
-    ws1.write_formula(r+4, 1, f"=ROUNDDOWN(({weight_cell}*({purity_cell}/100)*((100-{water_cell})/100))/{vol_cell}, 4)", total_fmt)
-    actual_stock_ref = f"'1. Info'!B{r+5}" # Reference for other sheets
+    infos = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    for i, (k, v) in enumerate(infos):
+        ws1.write(i+3, 0, k, sub)
+        ws1.merge_range(i+3, 1, i+3, 4, v if v else "", cell)
+
+    ws1.write(8, 0, "Round Rule:", sub)
+    ws1.merge_range(8, 1, 8, 4, "모든 계산값은 소수점 2째자리(농도 3째자리)에서 절사(ROUNDDOWN).", cell)
+
+    target_conc_val = float(params.get('Target_Conc', 1.0))
+    ws1.write(9, 0, "Target Conc (100%):", sub)
+    ws1.write(9, 1, target_conc_val, calc) # B10
+    ws1.write(9, 2, params.get('Unit', 'mg/mL'), cell)
+    target_conc_ref = "'1. Info'!$B$10"
+
+    ws1.merge_range(10, 0, 10, 4, "■ Standard Preparation & Correction Factor", sub_rep)
+    labels = ["Theoretical Stock (mg/mL):", "Purity (Potency, %):", "Water Content (%):", "Actual Weight (mg):", "Final Volume (mL):"]
+    for i, label in enumerate(labels):
+        ws1.write(11 + i, 0, label, sub)
+        if "Purity" in label: ws1.write(11 + i, 1, 100.0, calc)
+        elif "Water" in label: ws1.write(11 + i, 1, 0.0, calc)
+        else: ws1.write(11 + i, 1, "", calc)
+
+    ws1.write(16, 0, "Actual Stock (mg/mL):", sub)
+    ws1.write_formula(16, 1, '=IF(B16="","",ROUNDDOWN((B15*(B13/100)*((100-B14)/100))/B16, 4))', auto) # B17
+    actual_stock_ref = "'1. Info'!$B$17"
+
+    ws1.write(17, 0, "Correction Factor:", sub)
+    ws1.write_formula(17, 1, '=IF(OR(B12="",B12=0,B17=""), 1, ROUNDDOWN(B17/B12, 4))', total_fmt) # B18
+    corr_factor_ref = "'1. Info'!$B$18"
+    theo_stock_ref = "'1. Info'!$B$12"
 
     # 2. SST Sheet
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
@@ -277,6 +293,7 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
     ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
+    
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test (Identification & Interference)', header)
