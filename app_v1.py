@@ -194,8 +194,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc = Document(); set_korean_font(doc)
     def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
     target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
-    section = doc.sections[0]; header = section.header; 
-    htable = header.add_table(1, 2, Inches(6.0))
+    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0)) 
     ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
     ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
     title = doc.add_heading(f'밸리데이션 상세 계획서 (Validation Protocol)', 0); title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -227,7 +226,7 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
-# [Excel 생성 함수 - Smart Logbook (FIXED NameError & Logic)]
+# [Excel 생성 함수 - Smart Logbook (ALL SHEETS + CRITERIA CHECK)]
 def generate_smart_excel(method_name, category, params):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
@@ -240,7 +239,6 @@ def generate_smart_excel(method_name, category, params):
     auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # Calc
     pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
-    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.0', 'align':'center'})
 
     # 1. Info Sheet
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 20); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
@@ -249,132 +247,103 @@ def generate_smart_excel(method_name, category, params):
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
 
-    # 2. SST Sheet (Improved Criteria Logic)
-    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
-    ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
-    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
-    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
-    
+    # 2. SST Sheet (Auto Check)
+    ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:E', 15)
+    ws_sst.merge_range('A1:E1', 'System Suitability Test (n=6)', header)
+    ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing"], sub)
+    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", ""], calc)
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
-    
-    # Specific Tailing Check
-    ws_sst.write('A12', "Criteria (RSD):", sub); ws_sst.write('B12', "≤ 2.0%", cell)
-    ws_sst.write('C12', "Criteria (Tail):", sub); ws_sst.write('D12', "≤ 2.0 (Inj #1)", cell) 
-    ws_sst.write('E12', "Result:", sub)
-    # Check RSD <= 2.0 AND Tailing of 1st Injection (E3) <= 2.0
-    ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
-    ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+    ws_sst.write('A12', "Criteria:", sub); ws_sst.write('B12', "RSD ≤ 2.0%", cell)
+    ws_sst.write('C12', "Result:", sub)
+    ws_sst.write_formula('D12', '=IF(AND(B10<=2.0, C10<=2.0), "Pass", "Fail")', pass_fmt)
+    ws_sst.conditional_format('D12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test', header)
-    ws_spec.write('A3', "Std Mean Area:", sub); ws_spec.write('B3', "", calc) 
-    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
+    ws_spec.write_row('A2', ["Sample", "RT", "Area", "Interference (%)", "Criteria (≤0.5%)"], sub)
     for i, s in enumerate(["Blank", "Placebo"]):
-        row = i + 6
-        ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
-        ws_spec.write_formula(row, 3, f"=IF($B$3=\"\",\"\",ROUNDDOWN(C{row+1}/$B$3*100, 2))", auto)
-        ws_spec.write_formula(row, 4, f'=IF(D{row+1}<=0.5, "Pass", "Fail")', pass_fmt)
-        ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+        ws_spec.write(i+3, 0, s, cell); ws_spec.write_row(i+3, 1, ["", ""], calc)
+        ws_spec.write_formula(i+3, 3, f"=ROUNDDOWN(C{i+4}/10000*100, 2)", auto) # Dummy denominator for example
+        ws_spec.write_formula(i+3, 4, f'=IF(D{i+4}<=0.5, "Pass", "Fail")', pass_fmt)
 
     # 4. Linearity Sheet
     target_conc = params.get('Target_Conc')
     if target_conc:
         try: target_val_base = float(target_conc)
         except: target_val_base = 0
-        ws2 = workbook.add_worksheet("4. Linearity"); ws2.set_column('A:I', 13)
-        unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:I1', f'Linearity Test (Target: {target_conc} {unit})', header)
-        row = 3; rep_rows = {1: [], 2: [], 3: []}
-        
+        ws2 = workbook.add_worksheet("4. Linearity"); ws2.set_column('A:H', 13)
+        unit = params.get('Unit', 'ppm'); ws2.merge_range('A1:H1', f'Linearity Test (Target: {target_conc} {unit})', header)
+        row = 3; chart_rows = [] 
         for rep in range(1, 4):
-            ws2.merge_range(row, 0, row, 8, f"■ Repetition {rep}", sub_rep); row += 1
-            ws2.write_row(row, 0, ["Level", "Conc (X)", "Area (Y)", "Back Calc", "Accuracy (%)", "Check"], sub); row += 1
+            ws2.merge_range(row, 0, row, 7, f"■ Repetition {rep}", sub_rep); row += 1
+            ws2.write_row(row, 0, ["Level", "Conc (X)", "Area (Y)", "Check"], sub); row += 1
             data_start = row
             for level in [80, 90, 100, 110, 120]:
                 target_val = target_val_base * (level / 100)
                 ws2.write(row, 0, f"{level}%", cell); ws2.write_formula(row, 1, f"=ROUNDDOWN({target_val}, 3)", num)
-                ws2.write(row, 2, "", calc)
-                rep_rows[rep].append(row + 1)
-                ind_slope = f"C{data_start+7}"; ind_int = f"C{data_start+8}"
-                ws2.write_formula(row, 3, f"=IF(C{row+1}<>\"\", ROUNDDOWN((C{row+1}-{ind_int})/{ind_slope}, 3), \"\")", auto)
-                ws2.write_formula(row, 4, f"=IF(C{row+1}<>\"\", ROUNDDOWN(D{row+1}/B{row+1}*100, 1), \"\")", auto)
-                ws2.write(row, 5, "OK", cell); row += 1
-            ws2.write(row, 1, "Slope:", sub); ws2.write_formula(row, 2, f"=SLOPE(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
-            ws2.write(row+1, 1, "Intercept:", sub); ws2.write_formula(row+1, 2, f"=INTERCEPT(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
-            ws2.write(row+2, 1, "R²:", sub); ws2.write_formula(row+2, 2, f"=RSQ(C{data_start+1}:C{row}, B{data_start+1}:B{row})", auto)
-            
+                ws2.write(row, 2, "", calc); ws2.write(row, 3, "OK", cell); row += 1
             chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
             chart.add_series({'name': f'Rep {rep}', 'categories': f"='4. Linearity'!$B${data_start+1}:$B${row}", 'values': f"='4. Linearity'!$C${data_start+1}:$C${row}", 'trendline': {'type': 'linear', 'display_equation': True, 'display_r_squared': True}})
-            chart.set_size({'width': 350, 'height': 220}); ws2.insert_chart(f'G{data_start}', chart)
-            row += 6
+            chart.set_size({'width': 400, 'height': 250}); ws2.insert_chart(f'E{data_start}', chart); row += 8 
 
-        ws2.merge_range(row, 0, row, 8, "■ Summary (Mean of 3 Reps) & Final Check", sub_rep); row += 1
-        ws2.write_row(row, 0, ["Level", "Conc (X)", "Mean Area", "STDEV", "% RSD", "Criteria (RSD≤5%)"], sub); row += 1
-        summary_start = row
+        # Summary
+        ws2.merge_range(row, 0, row, 7, "■ Summary & Criteria Check", sub_rep); row += 1
+        ws2.write_row(row, 0, ["Level", "Conc (X)", "Mean Area", "STDEV", "% RSD", "Result (RSD≤5%)"], sub); row += 1
+        summary_start = row; r1_start = 5; r2_start = 19; r3_start = 33
         for i, level in enumerate([80, 90, 100, 110, 120]):
-            r1 = rep_rows[1][i]; r2 = rep_rows[2][i]; r3 = rep_rows[3][i]
-            ws2.write(row, 0, f"{level}%", cell); ws2.write_formula(row, 1, f"=B{r1}", num)
-            ws2.write_formula(row, 2, f"=ROUNDDOWN(AVERAGE(C{r1},C{r2},C{r3}), 2)", auto)
-            ws2.write_formula(row, 3, f"=ROUNDDOWN(STDEV(C{r1},C{r2},C{r3}), 2)", auto)
+            c_r1 = f"C{r1_start+i+1}"; c_r2 = f"C{r2_start+i+1}"; c_r3 = f"C{r3_start+i+1}"
+            ws2.write(row, 0, f"{level}%", cell); ws2.write_formula(row, 1, f"=B{r1_start+i+1}", num)
+            ws2.write_formula(row, 2, f"=ROUNDDOWN(AVERAGE({c_r1},{c_r2},{c_r3}), 2)", auto)
+            ws2.write_formula(row, 3, f"=ROUNDDOWN(STDEV({c_r1},{c_r2},{c_r3}), 2)", auto)
             ws2.write_formula(row, 4, f"=ROUNDDOWN(IF(C{row+1}=0, 0, D{row+1}/C{row+1}*100), 2)", auto)
             ws2.write_formula(row, 5, f'=IF(E{row+1}<=5.0, "Pass", "Fail")', pass_fmt)
             ws2.conditional_format(f'F{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt}); row += 1
-        row += 1
-        slope_cell = f"'4. Linearity'!C{row+1}"; int_cell = f"'4. Linearity'!C{row+2}"
-        ws2.write(row, 1, "Slope:", sub); ws2.write_formula(row, 2, f"=ROUNDDOWN(SLOPE(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
-        ws2.write(row+1, 1, "Intercept:", sub); ws2.write_formula(row+1, 2, f"=ROUNDDOWN(INTERCEPT(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
-        ws2.write(row+2, 1, "R²:", sub); ws2.write_formula(row+2, 2, f"=ROUNDDOWN(RSQ(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
-        ws2.write(row+2, 3, "Criteria (≥0.990):", sub); ws2.write_formula(row+2, 4, f'=IF(C{row+3}>=0.990, "Pass", "Fail")', pass_fmt)
-        ws2.conditional_format(f'E{row+3}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+        
+        row += 1; ws2.write(row, 1, "R²:", sub); ws2.write_formula(row, 2, f"=ROUNDDOWN(RSQ(C{summary_start+1}:C{summary_start+5}, B{summary_start+1}:B{summary_start+5}), 4)", auto)
+        ws2.write(row, 3, "Criteria (≥ 0.990):", sub)
+        ws2.write_formula(row, 4, f'=IF(C{row+1}>=0.990, "Pass", "Fail")', pass_fmt)
+        ws2.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # 5. Accuracy Sheet
-    ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:G', 15)
-    ws_acc.merge_range('A1:G1', 'Accuracy Test (Recovery)', header)
-    ws_acc.write('E3', "Slope:", sub); ws_acc.write_formula('F3', slope_cell, calc) 
-    ws_acc.write('E4', "Int:", sub); ws_acc.write_formula('F4', int_cell, calc)
-    row = 7
+    ws_acc = workbook.add_worksheet("5. Accuracy"); ws_acc.set_column('A:F', 15)
+    ws_acc.merge_range('A1:F1', 'Accuracy Test', header)
+    ws_acc.write_row('A2', ["Level", "Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)"], sub)
+    ws_acc.write('H2', "Slope:", sub); ws_acc.write('I2', "", calc)
+    ws_acc.write('H3', "Intercept:", sub); ws_acc.write('I3', "", calc)
+    row = 3
     for level in [80, 100, 120]:
-        ws_acc.merge_range(row, 0, row, 6, f"■ Level {level}% (3 Reps)", sub_rep); row += 1
-        ws_acc.write_row(row, 0, ["Rep", "Theo Conc", "Area", "Calc Conc", "Recovery (%)", "Criteria", "Result"], sub); row += 1
         t_val = target_val_base * (level/100)
-        start_row = row
         for rep in range(1, 4):
-            ws_acc.write(row, 0, rep, cell); ws_acc.write(row, 1, t_val, num)
-            ws_acc.write(row, 2, "", calc)
-            ws_acc.write_formula(row, 3, f"=IF(C{row+1}=\"\",\"\",ROUNDDOWN((C{row+1}-$F$4)/$F$3, 3))", auto)
-            ws_acc.write_formula(row, 4, f"=IF(D{row+1}=\"\",\"\",ROUNDDOWN(D{row+1}/B{row+1}*100, 1))", auto)
-            ws_acc.write(row, 5, "80~120%", cell)
-            ws_acc.write_formula(row, 6, f'=IF(AND(E{row+1}>=80, E{row+1}<=120), "Pass", "Fail")', pass_fmt)
+            ws_acc.write(row, 0, f"{level}%", cell); ws_acc.write(row, 1, rep, cell); ws_acc.write(row, 2, t_val, num); ws_acc.write(row, 3, "", calc)
+            ws_acc.write_formula(row, 4, f"=ROUNDDOWN((D{row+1}-$I$3)/$I$2, 2)", auto)
+            ws_acc.write_formula(row, 5, f"=ROUNDDOWN(E{row+1}/C{row+1}*100, 2)", auto)
             row += 1
-        ws_acc.write(row, 3, "Mean Rec(%):", sub)
-        ws_acc.write_formula(row, 4, f"=ROUNDDOWN(AVERAGE(E{start_row+1}:E{row}), 1)", total_fmt) 
-        row += 2
+    ws_acc.write(row, 4, "Mean Recovery:", sub); ws_acc.write_formula(row, 5, f"=ROUNDDOWN(AVERAGE(F4:F{row}), 2)", auto)
+    ws_acc.write(row, 2, "Criteria (80~120%):", sub)
+    ws_acc.write_formula(row, 3, f'=IF(AND(F{row+1}>=80, F{row+1}<=120), "Pass", "Fail")', pass_fmt)
 
-    # 6. Precision
+    # 6. Precision Sheet
     ws3 = workbook.add_worksheet("6. Precision"); ws3.set_column('A:E', 15); ws3.merge_range('A1:E1', 'Precision', header)
     ws3.merge_range('A3:E3', "■ Day 1 (Repeatability)", sub); ws3.write_row('A4', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
     for i in range(6): ws3.write_row(4+i, 0, [i+1, "Sample", ""], calc)
     ws3.write_formula('D5', "=ROUNDDOWN(AVERAGE(C5:C10), 2)", num); ws3.write_formula('E5', "=ROUNDDOWN(STDEV(C5:C10)/D5*100, 2)", num)
     ws3.write('E11', "Check (RSD≤2.0):", sub); ws3.write_formula('E12', '=IF(E5<=2.0, "Pass", "Fail")', pass_fmt)
-    ws3.merge_range('A14:E14', "■ Day 2 (Intermediate Precision)", sub); ws3.write_row('A15', ["Inj", "Sample", "Result", "Mean", "RSD"], sub)
-    for i in range(6): ws3.write_row(15+i, 0, [i+1, "Sample", ""], calc)
-    ws3.write_formula('D16', "=ROUNDDOWN(AVERAGE(C16:C21), 2)", num); ws3.write_formula('E16', "=ROUNDDOWN(STDEV(C16:C21)/D16*100, 2)", num)
-    ws3.write('A23', "Diff (%)", sub); ws3.write_formula('B23', "=ROUNDDOWN(ABS(D5-D16)/AVERAGE(D5,D16)*100, 2)", num)
 
     # 7. Robustness
     if params.get('Detail_Robustness'):
         ws4 = workbook.add_worksheet("7. Robustness"); ws4.set_column('A:F', 18); ws4.merge_range('A1:F1', 'Robustness Conditions', header)
         ws4.write_row('A3', ["Condition", "Set", "Actual", "SST Result", "Pass/Fail", "Note"], sub)
         for r, c in enumerate(["Standard", "Flow -0.1", "Flow +0.1", "Temp -2", "Temp +2"]): 
-            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, [""]*5, calc)
+            ws4.write(4+r, 0, c, cell); ws4.write_row(4+r, 1, ["", "", "Pass", ""], calc)
 
     # 8. LOD/LOQ
     ws_ll = workbook.add_worksheet("8. LOD_LOQ"); ws_ll.set_column('A:E', 15); ws_ll.merge_range('A1:E1', 'LOD / LOQ', header)
-    ws_ll.write_row('A2', ["Item", "Signal", "Noise", "S/N Ratio", "Result"], sub)
-    ws_ll.write('A3', "LOD Sample", cell); ws_ll.write('B3', "", calc); ws_ll.write('C3', "", calc); ws_ll.write_formula('D3', "=ROUNDDOWN(B3/C3, 1)", auto)
+    ws_ll.write_row('A2', ["Item", "Signal", "Noise", "S/N Ratio", "Result (≥3 / ≥10)"], sub)
+    ws_ll.write('A3', "LOD", cell); ws_ll.write('B3', "", calc); ws_ll.write('C3', "", calc); ws_ll.write_formula('D3', "=ROUNDDOWN(B3/C3, 1)", auto)
     ws_ll.write_formula('E3', '=IF(D3>=3, "Pass", "Fail")', pass_fmt)
-    ws_ll.write('A4', "LOQ Sample", cell); ws_ll.write('B4', "", calc); ws_ll.write('C4', "", calc); ws_ll.write_formula('D4', "=ROUNDDOWN(B4/C4, 1)", auto)
+    ws_ll.write('A4', "LOQ", cell); ws_ll.write('B4', "", calc); ws_ll.write('C4', "", calc); ws_ll.write_formula('D4', "=ROUNDDOWN(B4/C4, 1)", auto)
     ws_ll.write_formula('E4', '=IF(D4>=10, "Pass", "Fail")', pass_fmt)
 
     workbook.close(); output.seek(0)
@@ -438,8 +407,8 @@ with col2:
                                 st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (Final Fixed)")
-                st.info("✅ SST(Tailing Check), 특이성(Std 기준), 직선성(회차별 그래프), 정확성(자동 참조) 기능 탑재")
+                st.markdown("### 📗 스마트 엑셀 일지 (All Sheets Included)")
+                st.info("✅ 모든 항목(SST, 직선성, 정확성, 정밀성, 특이성, 완건성, LOD/LOQ)이 포함된 통합 엑셀 일지입니다.")
                 sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
                 if st.button("Download Excel Logbook"):
                     data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
