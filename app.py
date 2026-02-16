@@ -249,33 +249,12 @@ def generate_smart_excel(method_name, category, params):
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'}) # Criteria Text
 
     # [1. Info Sheet]
-    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
-    ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    
-    info_rows = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
-    for i, (k, v) in enumerate(info_rows):
-        ws1.write(i+3, 0, k, sub); ws1.merge_range(i+3, 1, i+3, 4, v if v else "", cell)
+    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 20); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
+    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    r = 3; 
+    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
+    ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
 
-    ws1.write(8, 0, "Round Rule:", sub); ws1.merge_range(8, 1, 8, 4, "모든 계산값은 소수점 2째자리(농도 3째자리)에서 절사(ROUNDDOWN).", cell)
-    
-    target_conc_val = float(params.get('Target_Conc', 1.0))
-    ws1.write(9, 0, "Target Conc (100%):", sub); ws1.write(9, 1, target_conc_val, calc); ws1.write(9, 2, params.get('Unit', 'mg/mL'), cell)
-    target_conc_ref = "'1. Info'!$B$10"
-
-    ws1.merge_range(10, 0, 10, 4, "■ Standard Preparation & Correction Factor", sub_rep)
-    labels = ["Theoretical Stock (mg/mL):", "Purity (Potency, %):", "Water Content (%):", "Actual Weight (mg):", "Final Volume (mL):"]
-    for i, label in enumerate(labels):
-        ws1.write(11 + i, 0, label, sub)
-        if "Purity" in label: ws1.write(11 + i, 1, 100.0, calc)
-        elif "Water" in label: ws1.write(11 + i, 1, 0.0, calc)
-        else: ws1.write(11 + i, 1, 1.0, calc)
-
-    ws1.write(16, 0, "Actual Stock (mg/mL):", sub)
-    ws1.write_formula(16, 1, '=IF(B16="","",ROUNDDOWN((B15*(B13/100)*((100-B14)/100))/B16, 4))', auto)
-    actual_stock_ref = "'1. Info'!$B$17"
-    ws1.write(17, 0, "Correction Factor:", sub); ws1.write_formula(17, 1, '=IF(OR(B12="",B12=0,B17=""), 1, ROUNDDOWN(B17/B12, 4))', total_fmt)
-    corr_factor_ref = "'1. Info'!$B$18"; theo_stock_ref = "'1. Info'!$B$12"    
-   
     # [기준 명시] 하단 추가
     ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
     ws_sst.write('A15', "1) Retention Time & Area RSD ≤ 2.0%")
@@ -285,19 +264,20 @@ def generate_smart_excel(method_name, category, params):
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
-    for i in range(1, 7):
-        ws_sst.write(i+1, 0, i, cell)
-        sim_rt = 5.0 + random.uniform(-0.02, 0.02) if simulate else ""
-        sim_area = (target_conc_val * 10000) + random.uniform(-100, 100) if simulate else ""
-        sim_tail = 1.1 if simulate else ""
-        ws_sst.write_row(i+1, 1, [sim_rt, sim_area, "", sim_tail, ""], calc)
-        
+    for i in range(1, 7): ws_sst.write(i+1, 0, i, cell); ws_sst.write_row(i+1, 1, ["", "", "", "", ""], calc)
+    
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
-    ws_sst.write('A12', "Result:", sub); ws_sst.write_formula('B12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
-    ws_sst.conditional_format('B12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-    ws_sst.write('A14', "※ Acceptance Criteria: RSD ≤ 2.0%, Tailing ≤ 2.0", crit_fmt)    
     
+    # Specific Tailing Check
+    ws_sst.write('A12', "Criteria (RSD):", sub); ws_sst.write('B12', "≤ 2.0%", cell)
+    ws_sst.write('C12', "Criteria (Tail):", sub); ws_sst.write('D12', "≤ 2.0 (Inj #1)", cell) 
+    ws_sst.write('E12', "Result:", sub)
+    
+    # Check RSD <= 2.0 AND Tailing of 1st Injection (E3) <= 2.0
+    ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
+    ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})    
+   
     # Explicit Criteria Display
     ws_sst.merge_range('A12:B12', "Criteria (RSD):", sub); ws_sst.write('C12', "≤ 2.0%", cell)
     ws_sst.merge_range('A13:B13', "Criteria (Tailing):", sub); ws_sst.write('C13', "≤ 2.0", cell) # Default GMP
@@ -639,39 +619,19 @@ with col2:
                                 st.download_button("📄 상세 계획서 (Protocol) 다운로드", doc_proto, f"Protocol_{sel_p}.docx", type="primary")
 
             with t2:
-                st.markdown("### 📗 스마트 엑셀 일지 (GMP)")
-                sel_l = st.selectbox("Select Logbook:", my_plan["Method"].unique(), key="l")
-                
-                simulate_mode = st.checkbox("🧪 시뮬레이션 데이터 포함 (Test Mode: Auto-fill Data)", value=False)
-                
-                if st.button("Generate Excel Logbook"):
-                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l), simulate=simulate_mode)
-                    
-                    st.session_state['generated_logbook'] = data
-                    st.session_state['generated_log_name'] = sel_l
-                    st.success(f"Logbook Generated! ({'Simulated' if simulate_mode else 'Blank'})")
-                    st.download_button("📥 Download Excel Logbook", data, f"Logbook_{sel_l}.xlsx")
-
+                st.markdown("### 📗 스마트 엑셀 일지 (Final Fixed)")
+                st.info("✅ SST(Tailing Check), 특이성(Std 기준), 직선성(회차별 그래프), 정확성(자동 참조) 기능 탑재")
+                sel_l = st.selectbox("Logbook:", my_plan["Method"].unique(), key="l")
+                if st.button("Download Excel Logbook"):
+                    data = generate_smart_excel(sel_l, "Cat", get_method_params(sel_l))
+                    st.download_button("📊 Excel Logbook 다운로드", data, f"Logbook_{sel_l}.xlsx")
 
             with t3:
-                st.markdown("### 📊 최종 결과 보고서 (Automated)")
-                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
-                uploaded_log = st.file_uploader("📂 Upload Filled Logbook (xlsx)", type=["xlsx"])
-                
-                used_log = None
-                if uploaded_log: used_log = uploaded_log
-                elif 'generated_logbook' in st.session_state and st.session_state['generated_log_name'] == sel_r:
-                    st.info("💡 Step 2에서 생성된 일지 데이터를 자동으로 불러옵니다.")
-                    used_log = st.session_state['generated_logbook']
-
-                lot_no = st.text_input("Lot No:", value="TBD")
-                
-                if used_log:
-                    st.success("Data Ready!")
-                    extracted_data = extract_logbook_data(used_log)
-                    with st.expander("🔍 Extracted Data Preview"): st.json(extracted_data)
-                    if st.button("Generate Final Report"):
-                        doc_r = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no': lot_no}, extracted_data)
-                        st.download_button("📥 Download Report (Docx)", doc_r, f"Final_Report_{sel_r}.docx")
-                else:
-                    st.warning("⚠️ 엑셀 일지를 업로드하거나 Step 2에서 생성해주세요.")
+                st.markdown("### 📊 최종 결과 보고서")
+                sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
+                with st.form("rep"):
+                    l = st.text_input("Lot"); d = st.text_input("Date"); a = st.text_input("Analyst")
+                    s = st.text_input("SST"); m = st.text_input("Main Result")
+                    if st.form_submit_button("Generate Report"):
+                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
+                        st.download_button("📥 Report", doc, "Report.docx")
