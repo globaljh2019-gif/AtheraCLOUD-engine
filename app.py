@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import io
 import xlsxwriter
+import random
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -355,8 +356,9 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     return doc_io
 
 # [Excel 생성 함수 - Smart Logbook (ACTUAL WEIGHT & CORRECTION LOGIC)]
-def generate_smart_excel(method_name, category, params):
-    output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+def generate_smart_excel(method_name, category, params, simulate=False):
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
     # Styles
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
