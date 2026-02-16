@@ -249,11 +249,16 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     doc = Document()
     
     # -----------------------------------------------------------
-    # [글꼴 설정] 한글: 맑은 고딕, 영어/숫자: Times New Roman
+    # [글꼴 설정 함수] 한글: 맑은 고딕, 영어: Times New Roman
     # -----------------------------------------------------------
+    def set_font(run):
+        run.font.name = 'Times New Roman'
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+
+    # 기본 스타일 설정
     style = doc.styles['Normal']
-    style.font.name = 'Times New Roman'  # 기본(영어/숫자)
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic') # 한글용
+    style.font.name = 'Times New Roman'
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
     style.font.size = Pt(10)
     
     # -----------------------------------------------------------
@@ -263,33 +268,46 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     header = section.header
     
     # 문서 번호 생성
-    doc_no = f"VP-{method_name[:3].upper()}-{datetime.now().strftime('%y%m%d')}"
+    doc_no = f"VP-{method_name[:3].upper() if method_name else 'GEN'}-{datetime.now().strftime('%y%m%d')}"
     
-    # [수정] 왼쪽 정렬 적용
     p_head = header.paragraphs[0]
     p_head.alignment = WD_ALIGN_PARAGRAPH.LEFT 
-    run1 = p_head.add_run(f"Document No.: {doc_no}\n")
-    run1.bold = True; run1.font.size = Pt(9)
-    run2 = p_head.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    run2.font.size = Pt(9)
+    r1 = p_head.add_run(f"Document No.: {doc_no}\n")
+    r1.bold = True; r1.font.size = Pt(9); set_font(r1)
+    r2 = p_head.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+    r2.font.size = Pt(9); set_font(r2)
 
     # -----------------------------------------------------------
     # 2. 제목 및 개요
     # -----------------------------------------------------------
-    doc.add_paragraph() # 공백
-    title = doc.add_heading('시험법 밸리데이션 상세 계획서', 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"(Method Validation Protocol for {method_name})").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph() 
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_title = p_title.add_run('시험법 밸리데이션 상세 계획서')
+    run_title.bold = True; run_title.font.size = Pt(16); set_font(run_title)
+    
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_sub = p_sub.add_run(f"(Method Validation Protocol for {method_name})")
+    run_sub.font.size = Pt(12); set_font(run_sub)
     doc.add_paragraph()
     
+    # 공통 헤딩 함수
+    def add_custom_heading(text, level):
+        p = doc.add_paragraph()
+        p.style = doc.styles[f'Heading {level}']
+        r = p.add_run(text)
+        set_font(r)
+        return p
+    
     # 1. 목적
-    doc.add_heading('1. 목적 (Objective)', level=1)
-    doc.add_paragraph(f"본 계획서는 '{method_name}' 시험법이 의약품 품질 관리에 적합함을 검증하기 위한 구체적인 시험 절차, 시액 조제 방법 및 판정 기준을 규정한다.")
-    
+    add_custom_heading('1. 목적 (Objective)', 1)
+    p = doc.add_paragraph(f"본 문서는 '{method_name}' 시험법이 의약품 품질 관리에 적합함을 검증하기 위한 구체적인 시험 절차, 시액 조제 방법 및 판정 기준을 규정한다.")
+    set_font(p.runs[0])
+
     # 2. 기기 및 시약 (상세)
-    doc.add_heading('2. 기기 및 분석 조건 (Instruments & Conditions)', level=1)
+    add_custom_heading('2. 기기 및 분석 조건 (Instruments & Conditions)', 1)
     t_cond = doc.add_table(rows=5, cols=2); t_cond.style = 'Table Grid'
-    
     cond_list = [
         ("사용 기기 (Instrument)", params.get('Instrument', 'HPLC System')),
         ("컬럼 (Column)", params.get('Column_Plate', 'C18 Column')),
@@ -297,12 +315,11 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
         ("이동상 (Mobile Phase)", f"A: {params.get('Condition_A', 'N/A')}\nB: {params.get('Condition_B', 'N/A')}"),
         ("희석액 (Diluent)", "이동상 A와 B의 혼합액 또는 규정된 용매")
     ]
-    
     for i, (k, v) in enumerate(cond_list):
-        t_cond.rows[i].cells[0].text = k
-        t_cond.rows[i].cells[0].paragraphs[0].runs[0].bold = True
-        set_table_header_style(t_cond.rows[i].cells[0])
-        t_cond.rows[i].cells[1].text = str(v)
+        cell0 = t_cond.rows[i].cells[0]; cell1 = t_cond.rows[i].cells[1]
+        r0 = cell0.paragraphs[0].add_run(k); r0.bold = True; set_font(r0)
+        r1 = cell1.paragraphs[0].add_run(str(v)); set_font(r1)
+        set_table_header_style(cell0)
 
     # -----------------------------------------------------------
     # 3. 항목별 상세 시험 방법 (SOP 수준 구체화)
@@ -319,97 +336,128 @@ def generate_protocol_premium(method_name, category, params, stock_conc=None, re
     unit = params.get('Unit', 'mg/mL')
 
     # 3.1 공통 조제 (Stock)
-    doc.add_heading('3.1 표준 모액 및 희석액 조제', level=2)
-    doc.add_paragraph("1) 희석액(Diluent): 이동상 A와 B를 지정된 비율로 혼합하거나 규정된 용매를 사용하여 준비한다.")
-    doc.add_paragraph(f"2) 표준 모액(Stock Solution): 표준품을 정밀하게 달아 {s_conc} {unit} 농도가 되도록 희석액으로 녹여 조제한다.")
-    doc.add_paragraph(f"3) 위약(Placebo): 주성분을 제외한 기제(Matrix)를 정밀하게 달아 {v_req} mL 부피 플라스크에 넣고 희석액으로 표선까지 채워 조제한다.")
+    add_custom_heading('3.1 시액 및 표준액 조제', 2)
+    
+    p_list = [
+        "1) 희석액(Diluent): 이동상 A와 B를 지정된 비율로 혼합하거나 규정된 용매를 사용하여 준비한다.",
+        f"2) 표준 모액(Stock Solution): 표준품을 정밀하게 달아 {s_conc} {unit} 농도가 되도록 희석액으로 녹여 조제한다.",
+        f"3) 위약(Placebo): 주성분을 제외한 기제를 정밀하게 달아 {v_req} mL 부피 플라스크에 넣고 희석액으로 표선까지 채워 조제한다."
+    ]
+    for txt in p_list:
+        p = doc.add_paragraph(txt); set_font(p.runs[0])
 
     # -----------------------------------------------------------
-    # 3.2 항목별 상세 조제법 (특이성, 직선성, 정확성, 정밀성)
+    # 3. 상세 시험 방법 (SOP 수준 - 모든 항목 계산 반영)
     # -----------------------------------------------------------
-    doc.add_heading('3.2 항목별 검액 조제 및 시험 방법', level=2)
+    add_custom_heading('3. 상세 시험 방법 (Test Procedure)', 1)
+    
+    try:
+        s_conc = float(stock_conc) if stock_conc else 0.0
+        t_conc = float(target_conc_override) if target_conc_override else 1.0
+        v_req = float(req_vol) if req_vol else 10.0
+    except: s_conc = 0.0; t_conc = 1.0; v_req = 10.0
+    unit = params.get('Unit', 'mg/mL')
 
-    # [특이성]
-    doc.add_paragraph("가. 특이성 (Specificity)")
-    doc.add_paragraph("  다음의 용액을 각각 조제하여 HPLC에 1회 주입하고 크로마토그램을 확인한다.")
-    doc.add_paragraph("  - 공시험액 (Blank): 희석액을 그대로 사용.")
-    doc.add_paragraph(f"  - 위약 (Placebo): 위 3.1항에 따라 조제한 {v_req} mL 용액 사용.")
-    doc.add_paragraph(f"  - 표준액 (Standard): 표준 모액을 희석하여 타겟 농도 {t_conc} {unit} (100%)로 조제.")
+    # [3.1 공통 조제]
+    add_custom_heading('3.1 시액 및 표준액 조제', 2)
+    
+    p_list = [
+        "1) 희석액(Diluent): 이동상 A와 B를 지정된 비율로 혼합하거나 규정된 용매를 사용하여 준비한다.",
+        f"2) 표준 모액(Stock Solution): 표준품을 정밀하게 달아 {s_conc} {unit} 농도가 되도록 희석액으로 녹여 조제한다.",
+        f"3) 위약(Placebo): 주성분을 제외한 기제를 정밀하게 달아 {v_req} mL 부피 플라스크에 넣고 희석액으로 표선까지 채워 조제한다."
+    ]
+    for txt in p_list:
+        p = doc.add_paragraph(txt); set_font(p.runs[0])
 
-    # [직선성 & 정확성] - 계산 로직 적용된 상세 지시문
-    doc.add_paragraph("나. 직선성 및 정확성 (Linearity & Accuracy)")
-    doc.add_paragraph(f"  표준 모액({s_conc} {unit})을 사용하여 아래 표와 같이 단계별로 희석하여 검액을 조제한다.")
-    doc.add_paragraph(f"  (목표 조제 부피: {v_req} mL 기준)")
+    # [3.2 특이성]
+    add_custom_heading('3.2 특이성 (Specificity)', 2)
+    p = doc.add_paragraph("다음 용액을 조제하여 주입한다.")
+    set_font(p.runs[0])
+    
+    spec_list = [
+        "• 공시험액, 위약: 3.1항에서 조제한 용액 사용.",
+        f"• 표준액(100%): 표준 모액 {(t_conc*v_req/s_conc if s_conc>0 else 0):.3f} mL를 {v_req} mL 플라스크에 넣고 희석액으로 표선까지 채운다."
+    ]
+    for txt in spec_list:
+        p = doc.add_paragraph(txt); set_font(p.runs[0])
 
-    # 조제표 생성
-    t_recipe = doc.add_table(rows=1, cols=6); t_recipe.style = 'Table Grid'
-    headers = ["항목 (Item)", "Level", "목표 농도", "모액 취함 (mL)", "최종 부피 (mL)", "희석액 (mL)"]
+    # [3.3 직선성]
+    add_custom_heading('3.3 직선성 (Linearity)', 2)
+    p = doc.add_paragraph(f"표준 모액({s_conc} {unit})을 사용하여 아래 표와 같이 5개 농도 레벨로 희석한다.")
+    set_font(p.runs[0])
+    p = doc.add_paragraph(f"※ 각 농도 레벨별로 3회씩 독립적으로 조제하여(총 15개 검액), 각각 1회 분석한다.")
+    set_font(p.runs[0])
+    
+    t_lin = doc.add_table(rows=1, cols=5); t_lin.style = 'Table Grid'
+    headers = ["Level", "목표 농도", "모액 취함 (mL)", "최종 부피 (mL)", "희석액 (mL)"]
     for i, h in enumerate(headers): 
-        t_recipe.rows[0].cells[i].text = h
-        set_table_header_style(t_recipe.rows[0].cells[i])
+        c = t_lin.rows[0].cells[i]
+        r = c.paragraphs[0].add_run(h); r.bold = True; set_font(r)
+        set_table_header_style(c)
 
-    # 5개 레벨 (80, 90, 100, 110, 120) 계산 및 행 추가
-    levels = [80, 90, 100, 110, 120]
-    for level in levels:
-        row = t_recipe.add_row().cells
-        tgt_c = t_conc * (level / 100)
+    for level in [80, 90, 100, 110, 120]:
+        row = t_lin.add_row().cells
+        tgt = t_conc * (level/100)
+        vs = (tgt * v_req) / s_conc if s_conc > 0 else 0
+        vd = v_req - vs
         
-        # Stock Volume 계산: (Target * Total) / Stock
-        if s_conc > 0:
-            vol_s = (tgt_c * v_req) / s_conc
-            vol_d = v_req - vol_s
-        else:
-            vol_s = 0; vol_d = 0
-            
-        # 정확성 해당 여부 표시 (80, 100, 120만 정확성)
-        usage = "직선성/정확성" if level in [80, 100, 120] else "직선성"
-        
-        row[0].text = usage
-        row[1].text = f"{level}%"
-        row[2].text = f"{tgt_c:.4f} {unit}"
-        row[3].text = f"{vol_s:.3f}" # 핵심: 취해야 할 양
-        row[4].text = f"{v_req:.1f}" # 최종 부피
-        row[5].text = f"{vol_d:.3f}" # 희석액 양
+        row[0].text = f"{level}%"
+        row[1].text = f"{tgt:.4f} {unit}"
+        row[2].text = f"{vs:.3f}"
+        row[3].text = f"{v_req:.1f}"
+        row[4].text = f"{vd:.3f}"
+        for cell in row: set_font(cell.paragraphs[0].runs[0])
 
-    doc.add_paragraph("  ※ 위 표에 제시된 '모액 취함' 양을 마이크로피펫 또는 피펫으로 정확히 취하여 '최종 부피' 플라스크에 넣고 희석액으로 채운다.")
-    doc.add_paragraph("  - 직선성: 각 레벨별 1회 조제하여 분석.")
-    doc.add_paragraph("  - 정확성: 80%, 100%, 120% 레벨은 각각 3회씩 독립적으로 조제하여 분석한다.")
-
-    # [3.4 정밀성] - 상세 조제표
-    doc.add_heading('3.4 정밀성 (Precision)', level=2)
-    doc.add_paragraph("기준 농도(100%) 검액을 6회 독립적으로 조제한다.")
+    # [3.4 정확성]
+    add_custom_heading('3.4 정확성 (Accuracy)', 2)
+    p = doc.add_paragraph("기준 농도의 80%, 100%, 120% 수준으로 각 3회씩 독립적으로 조제하여 분석한다 (총 9개 검액).")
+    set_font(p.runs[0])
     
-    t_prec = doc.add_table(rows=2, cols=5); t_prec.style = 'Table Grid'
-    ph = ["Sample ID", "Level", "Stock (mL)", "Total (mL)", "반복 횟수"]
-    for i, h in enumerate(ph): t_prec.rows[0].cells[i].text = h; set_table_header_style(t_prec.rows[0].cells[i])
+    acc_list = [
+        f"• 80% Level (3회): 위 직선성 표의 80% 조건({(t_conc*0.8*v_req/s_conc):.3f} mL 모액 → {v_req} mL)으로 3개 조제.",
+        f"• 100% Level (3회): 위 직선성 표의 100% 조건({(t_conc*1.0*v_req/s_conc):.3f} mL 모액 → {v_req} mL)으로 3개 조제.",
+        f"• 120% Level (3회): 위 직선성 표의 120% 조건({(t_conc*1.2*v_req/s_conc):.3f} mL 모액 → {v_req} mL)으로 3개 조제."
+    ]
+    for txt in acc_list:
+        p = doc.add_paragraph(txt); set_font(p.runs[0])
+
+    # [3.5 정밀성]
+    add_custom_heading('3.5 정밀성 (Precision)', 2)
+    p = doc.add_paragraph(f"기준 농도(100%)인 {t_conc} {unit} 검액을 6개 독립적으로 조제한다.")
+    set_font(p.runs[0])
+    p = doc.add_paragraph(f"• 조제법: 표준 모액 {(t_conc*v_req/s_conc):.3f} mL를 취하여 {v_req} mL 부피 플라스크에 넣고 희석한다. (x 6회 반복)")
+    set_font(p.runs[0])
+
+    # [3.6 LOD/LOQ] - 중간 희석액 도입
+    add_custom_heading('3.6 검출 및 정량한계 (LOD/LOQ)', 2)
+    p = doc.add_paragraph("저농도에서의 정확한 조제를 위해 '중간 희석액'을 거쳐 단계적으로 희석한다.")
+    set_font(p.runs[0])
     
-    pr = t_prec.rows[1].cells
-    p_vol = (t_conc * v_req) / s_conc if s_conc > 0 else 0
-    pr[0].text = "Precision Spl"; pr[1].text = "100%"; pr[2].text = f"{p_vol:.3f}"
-    pr[3].text = f"{v_req:.1f}"; pr[4].text = "n = 6"
-
-    # [3.5 완건성] - 상세 내용
-    doc.add_heading('3.5 완건성 (Robustness)', level=2)
-    doc.add_paragraph("표준액(100%)을 사용하여 아래 조건 변경 시 영향을 평가한다.")
-    doc.add_paragraph(f"• 시료 조제: 정밀성 시험과 동일하게 100% 농도({t_conc} {unit})로 조제한 표준액 사용.")
-    doc.add_paragraph("• 변경 조건: 유속(±0.1 mL/min), 컬럼 온도(±2℃) 등 (SOP 참조)")
-
-    # [3.6 LOD/LOQ] - 상세 조제표
-    doc.add_heading('3.6 검출 및 정량한계 (LOD/LOQ)', level=2)
-    doc.add_paragraph("저농도 구간(예: 1%, 0.5%)을 조제하여 S/N 비를 확인한다.")
+    # 중간 희석액 계산 (타겟의 10% 수준)
+    inter_conc = t_conc * 0.1
+    inter_vol_req = 100.0 # 중간 희석액은 넉넉하게 100mL 제조 가정
+    stock_for_inter = (inter_conc * inter_vol_req) / s_conc if s_conc > 0 else 0
+    
+    p = doc.add_paragraph(f"1) 중간 희석액 조제 ({inter_conc:.4f} {unit}): 표준 모액 {stock_for_inter:.3f} mL를 취하여 {inter_vol_req} mL 부피 플라스크에 넣고 희석한다.")
+    set_font(p.runs[0])
     
     t_lod = doc.add_table(rows=1, cols=5); t_lod.style = 'Table Grid'
-    lh = ["구분", "추정 Level", "농도", "Stock (mL)", "Total (mL)"]
-    for i, h in enumerate(lh): t_lod.rows[0].cells[i].text = h; set_table_header_style(t_lod.rows[0].cells[i])
+    lh = ["구분", "추정 Level", "농도", "중간액 취함 (mL)", "최종 부피 (mL)"]
+    for i, h in enumerate(lh): 
+        c = t_lod.rows[0].cells[i]
+        r = c.paragraphs[0].add_run(h); r.bold = True; set_font(r)
+        set_table_header_style(c)
     
-    for lvl in [1.0, 0.5]: # 1%, 0.5% 가정
+    # LOQ (1%), LOD (0.3% 가정)
+    for lvl, name in [(1.0, "LOQ (예상)"), (0.33, "LOD (예상)")]:
         lr = t_lod.add_row().cells
         ltgt = t_conc * (lvl/100)
-        lvs = (ltgt * v_req) / s_conc if s_conc > 0 else 0
-        tag = "LOQ (예상)" if lvl==1.0 else "LOD (예상)"
-        lr[0].text = tag; lr[1].text = f"{lvl}%"; lr[2].text = f"{ltgt:.4f}"
-        lr[3].text = f"{lvs:.4f}"; lr[4].text = f"{v_req:.1f}"
-    doc.add_paragraph("※ 필요 시 중간 희석액을 제조하여 단계 희석한다.")
+        # 중간액에서 희석: V = (Target * Total) / Inter_Conc
+        lvs = (ltgt * v_req) / inter_conc if inter_conc > 0 else 0
+        
+        lr[0].text = name; lr[1].text = f"{lvl}%"; lr[2].text = f"{ltgt:.5f}"
+        lr[3].text = f"{lvs:.3f}"; lr[4].text = f"{v_req:.1f}"
+        for c in lr: set_font(c.paragraphs[0].runs[0])
 
     # -----------------------------------------------------------
     # 4. 밸리데이션 항목 및 판정 기준 (서술식 & 분리)
