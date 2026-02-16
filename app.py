@@ -330,9 +330,9 @@ def generate_smart_excel(method_name, category, params):
         ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # [Criteria Added]
-    ws_spec.write(9, 0, "※ Acceptance Criteria:", crit_fmt)
-    ws_spec.write(10, 0, "1) Interference Peak Area ≤ 0.5% of Standard Area")
-    
+    ws_spec.write(15, 0, "※ Acceptance Criteria:", crit_fmt)
+    ws_spec.write(16, 0, "1) Interference Peak Area ≤ 0.5% of Standard Area")
+
     # 4. Linearity Sheet (Uses Actual Stock Conc)
     target_conc = params.get('Target_Conc')
     if target_conc:
