@@ -242,9 +242,7 @@ def generate_smart_excel(method_name, category, params):
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.0', 'align':'center'})
 
-    # -----------------------------------------------------------
-    # [Sheet 1] 1. Info
-    # -----------------------------------------------------------
+    # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     r = 3; 
@@ -266,9 +264,7 @@ def generate_smart_excel(method_name, category, params):
     ws1.write_formula(r+4, 1, f"=ROUNDDOWN(({weight_cell}*({purity_cell}/100)*((100-{water_cell})/100))/{vol_cell}, 4)", total_fmt)
     actual_stock_ref = f"'1. Info'!B{r+5}" # Reference for other sheets
 
-    # -----------------------------------------------------------
-    # [Sheet 2] 2. SST
-    # -----------------------------------------------------------
+    # 2. SST Sheet
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
     ws_sst.write_row('A2', ["Inj No.", "RT (min)", "Area", "Height", "Tailing (1st)", "Plate Count"], sub)
@@ -281,13 +277,7 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
     ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
-    # -----------------------------------------------------------
-    # [Sheet 3] 3. Specificity
-    # -----------------------------------------------------------
-    ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
-    ws_sst.write('A15', "1) RSD of RT & Area ≤ 2.0%")
-    ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
-
+    
     # 3. Specificity Sheet
     ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test (Identification & Interference)', header)
