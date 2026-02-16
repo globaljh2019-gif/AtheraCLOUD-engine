@@ -254,6 +254,26 @@ def generate_smart_excel(method_name, category, params):
     r = 3; 
     for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
     ws1.write(r+2, 0, "Round Rule:", sub); ws1.merge_range(r+2, 1, r+2, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
+   
+    # Actual Stock Prep Section
+    r += 3
+    ws1.merge_range(r, 0, r, 4, "■ Standard Stock Solution Preparation (보정값 적용)", sub_rep); r+=1
+    ws1.write(r, 0, "Purity (Potency, %):", sub); ws1.write(r, 1, "", calc); ws1.write(r, 2, "%", cell)
+    ws1.write(r+1, 0, "Water Content (%):", sub); ws1.write(r+1, 1, 0, calc); ws1.write(r+1, 2, "% (If applicable)", cell)
+    ws1.write(r+2, 0, "Actual Weight (mg):", sub); ws1.write(r+2, 1, "", calc); ws1.write(r+2, 2, "mg", cell)
+    ws1.write(r+3, 0, "Final Volume (mL):", sub); ws1.write(r+3, 1, "", calc); ws1.write(r+3, 2, "mL", cell)
+    ws1.write(r+4, 0, "Actual Stock Conc (mg/mL):", sub)
+    
+    # Actual Stock = (Weight * Purity/100 * (100-Water)/100) / Vol
+    ws1.write(r+5, 0, "Actual Stock (mg/mL):", sub)
+    ws1.write_formula(r+5, 1, f'=IF(B{r+5}="","",ROUNDDOWN((B{r+4}*(B{r+2}/100)*((100-B{r+3})/100))/B{r+5}, 4))', auto)
+    
+    # Correction Factor = Actual / Theoretical
+    ws1.write(r+6, 0, "Correction Factor:", sub)
+    ws1.write_formula(r+6, 1, f'=IF(OR(B{r+1}="", B{r+1}=0, B{r+6}=""), 1, ROUNDDOWN(B{r+6}/B{r+1}, 4))', total_fmt)
+    
+    # 참조용 이름 정의 (Correction Factor)
+    corr_factor_ref = "'1. Info'!$B$14" # 14행(r+6) 참조
 
     # [기준 명시] 하단 추가
     ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
@@ -269,39 +289,75 @@ def generate_smart_excel(method_name, category, params):
     ws_sst.write('A9', "Mean", sub); ws_sst.write_formula('B9', "=ROUNDDOWN(AVERAGE(B3:B8), 2)", auto); ws_sst.write_formula('C9', "=ROUNDDOWN(AVERAGE(C3:C8), 2)", auto)
     ws_sst.write('A10', "RSD(%)", sub); ws_sst.write_formula('B10', "=ROUNDDOWN(STDEV(B3:B8)/B9*100, 2)", auto); ws_sst.write_formula('C10', "=ROUNDDOWN(STDEV(C3:C8)/C9*100, 2)", auto)
     
-    # Specific Tailing Check
     ws_sst.write('A12', "Criteria (RSD):", sub); ws_sst.write('B12', "≤ 2.0%", cell)
     ws_sst.write('C12', "Criteria (Tail):", sub); ws_sst.write('D12', "≤ 2.0 (Inj #1)", cell) 
     ws_sst.write('E12', "Result:", sub)
-    
-    # Check RSD <= 2.0 AND Tailing of 1st Injection (E3) <= 2.0
     ws_sst.write_formula('F12', '=IF(AND(B10<=2.0, C10<=2.0, E3<=2.0), "Pass", "Fail")', pass_fmt)
-    ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})    
-   
-    # Explicit Criteria Display
-    ws_sst.merge_range('A12:B12', "Criteria (RSD):", sub); ws_sst.write('C12', "≤ 2.0%", cell)
-    ws_sst.merge_range('A13:B13', "Criteria (Tailing):", sub); ws_sst.write('C13', "≤ 2.0", cell) # Default GMP
+    ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
     
-    # Pass/Fail Logic including Tailing (Assuming Tailing in Col E, Mean Tailing at E9 check for individual or mean? Usually check all. Let's check Mean for now or Max)
-    ws_sst.write('D12', "Result:", sub)
-    # Check RSD <= 2.0 AND Max Tailing <= 2.0 (Safe approach)
-    ws_sst.write_formula('E12', '=IF(AND(B10<=2.0, C10<=2.0, MAX(E3:E8)<=2.0), "Pass", "Fail")', pass_fmt)
-    ws_sst.conditional_format('E12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-    
-    # 3. Specificity Sheet (보완됨)
-    ws_spec = workbook.add_worksheet("3. Specificity")
-    ws_spec.set_column('A:E', 20)
+    ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
+    ws_sst.write('A15', "1) Retention Time & Area RSD ≤ 2.0%")
+    ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
+
+    # 3. Specificity Sheet
+    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
     ws_spec.merge_range('A1:E1', 'Specificity Test', header)
-    ws_spec.write('A3', "Std Mean Area (Ref. SST):", sub); ws_spec.write_formula('B3', "='2. SST'!C9", num)
+    ws_spec.write('A3', "Std Mean Area (from SST):", sub); ws_spec.write_formula('B3', "='2. SST'!C9", num)
     
-    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result"], sub)
+    ws_spec.write_row('A5', ["Sample", "RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
     for i, s in enumerate(["Blank", "Placebo"]):
         row = i + 6
         ws_spec.write(row, 0, s, cell); ws_spec.write_row(row, 1, ["", ""], calc)
         ws_spec.write_formula(row, 3, f'=IF(OR(C{row+1}="", $B$3=""), "", ROUNDDOWN(C{row+1}/$B$3*100, 2))', auto)
         ws_spec.write_formula(row, 4, f'=IF(D{row+1}="", "", IF(D{row+1}<=0.5, "Pass", "Fail"))', pass_fmt)
         ws_spec.conditional_format(f'E{row+1}', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
-   
+
+    ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
+    ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")    
+    # 3. Specificity Sheet (보완됨)
+    ws_spec = workbook.add_worksheet("3. Specificity"); ws_spec.set_column('A:E', 20)
+    ws_spec.merge_range('A1:E1', 'Specificity Test (Identification & Interference)', header)
+    
+    # [Reference Data from SST] - SST 결과값 자동 참조
+    ws_spec.write('A3', "Ref. Std RT (min):", sub); ws_spec.write_formula('B3', "='2. SST'!B9", num) # SST Mean RT
+    ws_spec.write('C3', "Ref. Std Area:", sub); ws_spec.write_formula('D3', "='2. SST'!C9", num) # SST Mean Area
+    
+    # -----------------------------------------------------------
+    # Part 1. Identification (RT Match) - 주성분 확인
+    # -----------------------------------------------------------
+    ws_spec.merge_range('A5:E5', "1. Identification (RT Match)", sub_rep)
+    ws_spec.write_row('A6', ["Sample", "RT (min)", "Diff with Std (%)", "Criteria (≤2.0%)", "Result"], sub)
+    
+    # 검체(Sample) 1개 예시
+    ws_spec.write('A7', "Sample", cell)
+    ws_spec.write('B7', "", calc) # 사용자 입력 (검체 RT)
+    
+    # RT 차이(%) = abs(검체RT - 표준RT) / 표준RT * 100
+    ws_spec.write_formula('C7', f"=IF(B7=\"\",\"\",ROUNDDOWN(ABS(B7-$B$3)/$B$3*100, 2))", auto)
+    ws_spec.write('D7', "≤ 2.0%", cell)
+    ws_spec.write_formula('E7', f'=IF(C7=\"\",\"\",IF(C7<=2.0, "Pass", "Fail"))', pass_fmt)
+    ws_spec.conditional_format('E7', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
+
+    # -----------------------------------------------------------
+    # Part 2. Interference (Area Check) - 간섭 확인
+    # -----------------------------------------------------------
+    ws_spec.merge_range('A9:E9', "2. Interference (Blank/Placebo Check)", sub_rep)
+    ws_spec.write_row('A10', ["Sample", "Detected RT", "Area", "Interference (%)", "Result (≤0.5%)"], sub)
+    
+    for i, s in enumerate(["Blank", "Placebo"]):
+        row = i + 11
+        ws_spec.write(row, 0, s, cell)
+        ws_spec.write(row, 1, "", calc) # RT 입력 (간섭 피크가 떴을 때)
+        ws_spec.write(row, 2, "", calc) # Area 입력
+        
+        # 간섭율(%) = (간섭피크 면적 / 표준액 평균 면적) * 100
+        # 분모(D3)가 0이거나 비어있을 때 에러 방지
+        ws_spec.write_formula(row, 3, f"=IF(OR($D$3=\"\",$D$3=0), \"\", IF(C{row+1}=\"\", 0, ROUNDDOWN(C{row+1}/$D$3*100, 2)))", auto)
+        
+        # 판정: 0.5% 이하 Pass
+        ws_spec.write_formula(row, 4, f'=IF(D{row+1}<=0.5, "Pass", "Fail")', pass_fmt)
+        ws_spec.conditional_format(f'E{row+1}',   
+    
     # [기준 명시] 하단 추가
     ws_spec.write(f'A{row+3}', "※ Acceptance Criteria:", crit_fmt)
     ws_spec.write(f'A{row+4}', "1) Interference check: ≤ 0.5% of Standard Area")
@@ -444,122 +500,6 @@ def generate_smart_excel(method_name, category, params):
     workbook.close(); output.seek(0)
     return output
 
-
-# ---------------------------------------------------------
-# 4. 상세 계획서 생성 (보완된 SOP 기술)
-# ---------------------------------------------------------
-def generate_protocol_premium(method_name, category, params, stock_conc=None, req_vol=None, target_conc_override=None):
-    doc = Document(); set_korean_font(doc)
-    def safe_get(key, default=""): val = params.get(key); return str(val) if val is not None else default
-    target_conc = str(target_conc_override) if target_conc_override else safe_get('Target_Conc', '100'); unit = safe_get('Unit', '%')
-    
-    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
-    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Protocol No.: VP-{method_name[:3]}-001\n").bold = True; p1.add_run(f"Test Category: {category}")
-    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Guideline: {safe_get('Reference_Guideline', 'ICH Q2(R2)')}\n").bold = True; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    
-    doc.add_heading(f'밸리데이션 상세 계획서 ({method_name})', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    doc.add_heading('1. 목적 및 범위', level=1); doc.add_paragraph("본 시험법의 직선성, 정확성, 정밀성 등을 검증하여 의약품 품질 관리의 적합성을 보증한다.")
-    
-    doc.add_heading('2. 기기 및 시약', level=1); t_cond = doc.add_table(rows=4, cols=2); t_cond.style = 'Table Grid'
-    conds = [("시험 기기", safe_get('Instrument')), ("컬럼 정보", safe_get('Column_Plate')), ("검출기", safe_get('Detection')), ("SST 기준", f"RSD ≤ 2.0%, Tailing ≤ 2.0")]
-    for i, (k, v) in enumerate(conds): t_cond.rows[i].cells[0].text=k; t_cond.rows[i].cells[1].text=v
-    
-    doc.add_heading('3. 상세 조제 방법', level=1)
-    doc.add_heading('3.1 공시험액(Blank) 및 위약(Placebo)', level=2); doc.add_paragraph("1) Blank: 주성분을 제외한 희석액을 그대로 사용한다.\n2) Placebo: 주성분을 제외한 모든 부형제를 처방 비율대로 혼합하여 조제한다.")
-    doc.add_heading('3.2 표준액 및 검액 조제', level=2); doc.add_paragraph(f"1) Master Recipe 및 시험일지의 보정 계수(Correction Factor)를 확인하여 농도 {target_conc} {unit} 수준이 되도록 정밀 조제한다.")
-    
-    doc.add_heading('4. 시험 항목 및 평가 방법', level=1)
-    doc.add_heading('4.1 특이성(Specificity)', level=2); doc.add_paragraph("Blank와 Placebo를 주입하여 주성분 RT 위치에서의 간섭 피크 면적이 표준액의 0.5% 이하인지 확인한다.")
-    doc.add_heading('4.2 LOD 및 LOQ', level=2); doc.add_paragraph("S/N비(Signal to Noise)를 측정한다. LOD는 3:1 이상, LOQ는 10:1 이상이어야 하며, LOQ 농도에서의 정밀성(RSD)을 추가로 평가할 수 있다.")
-    
-    doc.add_paragraph("\n\n"); table_sign = doc.add_table(rows=2, cols=3); table_sign.style = 'Table Grid'
-    for i, h in enumerate(["작성", "검토", "승인"]): c = table_sign.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-    for i in range(3): table_sign.rows[1].cells[i].text="\n(서명/날짜)\n"
-    
-    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
-    return doc_io
-
-
-# ---------------------------------------------------------
-# 5. 엑셀 데이터 추출 (Parsing)
-# ---------------------------------------------------------
-def extract_logbook_data(uploaded_file):
-    results = {}
-    try:
-        df_sst = pd.read_excel(uploaded_file, sheet_name='2. SST', header=None)
-        rsd_row = df_sst[df_sst.eq("RSD(%)").any(axis=1)].index
-        if not rsd_row.empty:
-            idx = rsd_row[0]
-            results['sst_res'] = f"RT: {df_sst.iloc[idx, 1]}%, Area: {df_sst.iloc[idx, 2]}%"
-            res_row = df_sst[df_sst.eq("Result:").any(axis=1)].index
-            if not res_row.empty: results['sst_pass'] = df_sst.iloc[res_row[0], 1]
-        
-        df_lin = pd.read_excel(uploaded_file, sheet_name='4. Linearity', header=None)
-        r2_row = df_lin[df_lin.eq("Final R²:").any(axis=1)].index
-        if not r2_row.empty:
-            r2_val = df_lin.iloc[r2_row[0], 1]
-            results['lin_res'] = f"R² = {r2_val}"
-            results['lin_pass'] = df_lin.iloc[r2_row[0], 5]
-
-        df_acc = pd.read_excel(uploaded_file, sheet_name='5. Accuracy', header=None)
-        mean_recs = []
-        for r in df_acc.index:
-            for c in df_acc.columns:
-                if str(df_acc.iloc[r, c]).strip() == "Mean Rec(%):":
-                    val = df_acc.iloc[r, c+1]
-                    if pd.notna(val): mean_recs.append(val)
-        if mean_recs:
-            results['acc_res'] = f"{min(mean_recs)}% ~ {max(mean_recs)}%"
-            results['acc_pass'] = "Pass"
-
-        df_prec = pd.read_excel(uploaded_file, sheet_name='6. Precision', header=None)
-        rsd_rows = df_prec[df_prec.eq("Result:").any(axis=1)].index
-        if not rsd_rows.empty:
-            results['prec_res'] = f"RSD: {df_prec.iloc[rsd_rows[0]-6, 4]}%" 
-            results['prec_pass'] = df_prec.iloc[rsd_rows[0], 4]
-
-    except Exception as e: return {}
-    return results 
-
-# ---------------------------------------------------------
-# 6. 최종 보고서 생성 (Automated)
-# ---------------------------------------------------------
-def generate_summary_report_gmp(method_name, category, params, context, test_results=None):
-    if test_results is None: test_results = {}
-    doc = Document(); set_korean_font(doc)
-    
-    section = doc.sections[0]; header = section.header; htable = header.add_table(1, 2, Inches(6.0))
-    ht_c1 = htable.cell(0, 0); p1 = ht_c1.paragraphs[0]; p1.add_run(f"Final Report: {method_name}\n").bold = True; p1.add_run(f"Lot: {context.get('lot_no')}")
-    ht_c2 = htable.cell(0, 1); p2 = ht_c2.paragraphs[0]; p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT; p2.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-
-    doc.add_heading('시험법 밸리데이션 최종 보고서', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph().add_run(f"Method: {method_name}").bold = True
-    
-    doc.add_heading('1. 개요 (Summary)', level=1)
-    t_sum = doc.add_table(rows=0, cols=2); t_sum.style = 'Table Grid'
-    for k, v in [("기기", params.get('Instrument')), ("컬럼", params.get('Column_Plate')), ("검출기", params.get('Detection'))]:
-        r = t_sum.add_row().cells; r[0].text=k; r[1].text=str(v)
-    
-    doc.add_heading('2. 결과 요약 (Results)', level=1)
-    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
-    headers = ["Test Item", "Criteria", "Result", "Judgment"]
-    for i, h in enumerate(headers): c = t_res.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-    
-    items_map = [
-        ("System Suitability", params.get('SST_Criteria', "RSD ≤ 2.0%"), test_results.get('sst_res', ""), test_results.get('sst_pass', "")),
-        ("Specificity", "No Interference", "No Interference", "Pass"),
-        ("Linearity", "R² ≥ 0.990", test_results.get('lin_res', ""), test_results.get('lin_pass', "")),
-        ("Accuracy", "80 ~ 120%", test_results.get('acc_res', ""), test_results.get('acc_pass', "")),
-        ("Precision", "RSD ≤ 2.0%", test_results.get('prec_res', ""), test_results.get('prec_pass', "")),
-    ]
-    for item, crit, res, judge in items_map:
-        r = t_res.add_row().cells; r[0].text=item; r[1].text=crit; r[2].text=str(res); r[3].text=str(judge)
-
-    doc.add_heading('3. 종합 결론', level=1)
-    doc.add_paragraph("본 시험법은 모든 밸리데이션 항목에서 판정 기준을 만족하였음.")
-    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
-    return doc_io  
 
 # ---------------------------------------------------------
 # 7. 메인 UI Loop (통합 & 세션 연결)
