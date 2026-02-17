@@ -35,73 +35,70 @@ headers = {"Authorization": "Bearer " + NOTION_API_KEY, "Content-Type": "applica
 @st.cache_data
 def get_criteria_map():
     if not CRITERIA_DB_ID: return {}
-    url = f"https://api.notion.com/v1/databases/{CRITERIA_DB_ID}/query"
-    res = requests.post(url, headers=headers)
-    criteria_map = {}
-    if res.status_code == 200:
-        for p in res.json().get("results", []):
-            try:
-                props = p["properties"]
-                cat = props["Test_Category"]["title"][0]["text"]["content"] if props["Test_Category"]["title"] else "Unknown"
-                req = [i["name"] for i in props["Required_Items"]["multi_select"]]
-                criteria_map[p["id"]] = {"Category": cat, "Required_Items": req}
-            except: continue
-    return criteria_map
+    try:
+        url = f"https://api.notion.com/v1/databases/{CRITERIA_DB_ID}/query"
+        res = requests.post(url, headers=headers); criteria_map = {}
+        if res.status_code == 200:
+            for p in res.json().get("results", []):
+                try:
+                    props = p["properties"]
+                    cat = props["Test_Category"]["title"][0]["text"]["content"] if props["Test_Category"]["title"] else "Unknown"
+                    req = [i["name"] for i in props["Required_Items"]["multi_select"]]
+                    criteria_map[p["id"]] = {"Category": cat, "Required_Items": req}
+                except: continue
+        return criteria_map
+    except: return {}
 
 def get_strategy_list(criteria_map):
     if not STRATEGY_DB_ID: return pd.DataFrame()
-    url = f"https://api.notion.com/v1/databases/{STRATEGY_DB_ID}/query"
-    res = requests.post(url, headers=headers)
-    data = []
-    if res.status_code == 200:
-        for p in res.json().get("results", []):
-            try:
-                props = p["properties"]
-                mod = props["Modality"]["select"]["name"] if props["Modality"]["select"] else ""
-                ph = props["Phase"]["select"]["name"] if props["Phase"]["select"] else ""
-                met = props["Method Name"]["rich_text"][0]["text"]["content"] if props["Method Name"]["rich_text"] else ""
-                rel = props["Test Category"]["relation"]
-                cat, items = ("Unknown", [])
-                if rel and rel[0]["id"] in criteria_map:
-                    cat = criteria_map[rel[0]["id"]]["Category"]
-                    items = criteria_map[rel[0]["id"]]["Required_Items"]
-                data.append({"Modality": mod, "Phase": ph, "Method": met, "Category": cat, "Required_Items": items})
-            except: continue
-    return pd.DataFrame(data)
+    try:
+        url = f"https://api.notion.com/v1/databases/{STRATEGY_DB_ID}/query"
+        res = requests.post(url, headers=headers); data = []
+        if res.status_code == 200:
+            for p in res.json().get("results", []):
+                try:
+                    props = p["properties"]
+                    mod = props["Modality"]["select"]["name"] if props["Modality"]["select"] else ""
+                    ph = props["Phase"]["select"]["name"] if props["Phase"]["select"] else ""
+                    met = props["Method Name"]["rich_text"][0]["text"]["content"] if props["Method Name"]["rich_text"] else ""
+                    rel = props["Test Category"]["relation"]
+                    cat, items = ("Unknown", [])
+                    if rel and rel[0]["id"] in criteria_map:
+                        cat = criteria_map[rel[0]["id"]]["Category"]
+                        items = criteria_map[rel[0]["id"]]["Required_Items"]
+                    data.append({"Modality": mod, "Phase": ph, "Method": met, "Category": cat, "Required_Items": items})
+                except: continue
+        return pd.DataFrame(data)
+    except: return pd.DataFrame()
 
 def get_method_params(method_name):
     if not PARAM_DB_ID: return {}
-    url = f"https://api.notion.com/v1/databases/{PARAM_DB_ID}/query"
-    payload = {"filter": {"property": "Method_Name", "title": {"equals": method_name}}}
-    res = requests.post(url, headers=headers, json=payload)
-    if res.status_code == 200 and res.json().get("results"):
-        props = res.json()["results"][0]["properties"]
-        def txt(n): 
-            try: 
-                ts = props.get(n, {}).get("rich_text", [])
-                return "".join([t["text"]["content"] for t in ts]) if ts else ""
-            except: return ""
-        def num(n):
-            try: return props.get(n, {}).get("number")
-            except: return None
-            
-        return {
-            "Instrument": txt("Instrument"), "Column_Plate": txt("Column_Plate"),
-            "Condition_A": txt("Condition_A"), "Condition_B": txt("Condition_B"), "Detection": txt("Detection"),
-            "SST_Criteria": txt("SST_Criteria"), "Reference_Guideline": txt("Reference_Guideline"),
-            "Detail_Specificity": txt("Detail_Specificity"), "Detail_Linearity": txt("Detail_Linearity"),
-            "Detail_Range": txt("Detail_Range"), "Detail_Accuracy": txt("Detail_Accuracy"),
-            "Detail_Precision": txt("Detail_Precision"), "Detail_Inter_Precision": txt("Detail_Inter_Precision"),
-            "Detail_LOD": txt("Detail_LOD"), "Detail_LOQ": txt("Detail_LOQ"), "Detail_Robustness": txt("Detail_Robustness"),
-            "Reagent_List": txt("Reagent_List"), "Ref_Standard_Info": txt("Ref_Standard_Info"),
-            "Preparation_Std": txt("Preparation_Std"), "Preparation_Sample": txt("Preparation_Sample"),
-            "Calculation_Formula": txt("Calculation_Formula"), "Logic_Statement": txt("Logic_Statement"),
-            "Target_Conc": num("Target_Conc"), "Unit": txt("Unit")
-        }
-    return {}
+    try:
+        url = f"https://api.notion.com/v1/databases/{PARAM_DB_ID}/query"
+        payload = {"filter": {"property": "Method_Name", "title": {"equals": method_name}}}
+        res = requests.post(url, headers=headers, json=payload)
+        if res.status_code == 200 and res.json().get("results"):
+            props = res.json()["results"][0]["properties"]
+            def txt(n): 
+                try: ts = props.get(n, {}).get("rich_text", []); return "".join([t["text"]["content"] for t in ts]) if ts else ""
+                except: return ""
+            def num(n):
+                try: return props.get(n, {}).get("number")
+                except: return None
+            return {
+                "Instrument": txt("Instrument"), "Column_Plate": txt("Column_Plate"), "Condition_A": txt("Condition_A"), "Condition_B": txt("Condition_B"), "Detection": txt("Detection"),
+                "SST_Criteria": txt("SST_Criteria"), "Reference_Guideline": txt("Reference_Guideline"), "Detail_Specificity": txt("Detail_Specificity"),
+                "Detail_Linearity": txt("Detail_Linearity"), "Detail_Range": txt("Detail_Range"), "Detail_Accuracy": txt("Detail_Accuracy"),
+                "Detail_Precision": txt("Detail_Precision"), "Detail_Inter_Precision": txt("Detail_Inter_Precision"), "Detail_LOD": txt("Detail_LOD"),
+                "Detail_LOQ": txt("Detail_LOQ"), "Detail_Robustness": txt("Detail_Robustness"), "Reagent_List": txt("Reagent_List"),
+                "Ref_Standard_Info": txt("Ref_Standard_Info"), "Preparation_Std": txt("Preparation_Std"), "Preparation_Sample": txt("Preparation_Sample"),
+                "Target_Conc": num("Target_Conc"), "Unit": txt("Unit")
+            }
+        return {}
+    except: return {}
 
 # ---------------------------------------------------------
-# 3. 문서 생성 엔진
+# 2. 문서 생성 엔진
 # ---------------------------------------------------------
 def set_korean_font(doc):
     style = doc.styles['Normal']
@@ -119,8 +116,10 @@ def set_table_header_style(cell):
     shading_elm.set(qn('w:fill'), 'D9D9D9') 
     tcPr.append(shading_elm)
     if cell.paragraphs:
-        if cell.paragraphs[0].runs: cell.paragraphs[0].runs[0].bold = True
         cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in cell.paragraphs[0].runs:
+            run.bold = True
+            set_font(run)
 
 # [VMP]
 def generate_vmp_premium(modality, phase, df_strategy):
