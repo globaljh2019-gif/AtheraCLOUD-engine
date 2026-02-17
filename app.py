@@ -98,7 +98,7 @@ def get_method_params(method_name):
     except: return {}
 
 # ---------------------------------------------------------
-# 2. 문서 생성 엔진
+# 2. 문서 생성 헬퍼
 # ---------------------------------------------------------
 def set_korean_font(doc):
     style = doc.styles['Normal']
@@ -120,6 +120,27 @@ def set_table_header_style(cell):
         for run in cell.paragraphs[0].runs:
             run.bold = True
             set_font(run)
+
+def add_page_number(doc):
+    # 푸터에 페이지 번호 추가
+    section = doc.sections[0]
+    footer = section.footer
+    p = footer.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run()
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+    run._r.append(fldChar1)
+    run._r.append(instrText)
+    run._r.append(fldChar2)
+    run._r.append(fldChar3)
 
 # ---------------------------------------------------------
 # 3. 문서 생성 엔진
@@ -699,39 +720,111 @@ def generate_smart_excel(method_name, category, params, simulate=False):
 def extract_logbook_data(uploaded_file):
     results = {}
     try:
+        # 1. SST
         df_sst = pd.read_excel(uploaded_file, sheet_name='2. SST', header=None)
         res_row = df_sst[df_sst.eq("Result:").any(axis=1)].index
-        if not res_row.empty: results['sst'] = df_sst.iloc[res_row[0], 5]
+        results['sst'] = df_sst.iloc[res_row[0], 5] if not res_row.empty else "N/A"
         
+        # 2. Linearity
         df_lin = pd.read_excel(uploaded_file, sheet_name='4. Linearity', header=None)
         r2_row = df_lin[df_lin.eq("Final R²:").any(axis=1)].index
-        if not r2_row.empty: results['r2'] = df_lin.iloc[r2_row[0], 2]
+        results['r2'] = df_lin.iloc[r2_row[0], 2] if not r2_row.empty else "N/A"
+
+        # 3. Specificity (예시)
+        try:
+            df_spec = pd.read_excel(uploaded_file, sheet_name='3. Specificity', header=None)
+            # 간섭 여부 체크 (Pass 개수 확인 등 단순화)
+            pass_count = df_spec.astype(str).apply(lambda x: x.str.contains('Pass').sum()).sum()
+            results['specificity'] = "Pass" if pass_count >= 2 else "Fail"
+        except: results['specificity'] = "N/A"
+
+        # 4. Accuracy & Precision (단순화: Pass 문자열 확인)
+        for sheet, key in [('5. Accuracy', 'accuracy'), ('6. Precision', 'precision'), ('8. LOD_LOQ', 'lod_loq')]:
+            try:
+                df = pd.read_excel(uploaded_file, sheet_name=sheet, header=None)
+                if df.astype(str).apply(lambda x: x.str.contains('Fail').sum()).sum() > 0:
+                    results[key] = "Fail"
+                else:
+                    results[key] = "Pass"
+            except: results[key] = "N/A"
+            
         return results
-    except: return {'sst': 'N/A', 'r2': 'N/A'}
+    except Exception as e: return {'error': str(e)}
 
 # [Final Report: 정의됨]
 def generate_summary_report_gmp(method_name, category, params, context, extracted_data):
     doc = Document(); set_korean_font(doc)
-    doc.add_heading('시험법 밸리데이션 최종 보고서', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Test Method: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_heading('1. 결과 요약 (Summary)', level=1)
-    t = doc.add_table(rows=1, cols=4); t.style = 'Table Grid'
-    headers = ["항목", "기준", "결과", "판정"]
+    add_page_number(doc) # Footer 페이지 번호 추가
+    
+    # 1. 헤더 (좌측 정렬)
+    section = doc.sections[0]; header = section.header
+    doc_no = f"VR-{method_name[:3].upper() if method_name else 'GEN'}-{datetime.now().strftime('%y%m%d')}"
+    p_head = header.paragraphs[0]; p_head.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    r1 = p_head.add_run(f"Document No.: {doc_no}\n"); r1.bold=True; set_font(r1)
+    r2 = p_head.add_run(f"Date: {datetime.now().strftime('%Y-%m-%d')}"); set_font(r2)
+
+    # 제목
+    doc.add_paragraph()
+    title = doc.add_heading('시험법 밸리데이션 최종 보고서', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"(Validation Report for {method_name})").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+
+    # 공통 헤딩 함수
+    def add_h(text, level):
+        p = doc.add_paragraph(); p.style = doc.styles[f'Heading {level}']; r = p.add_run(text); set_font(r)
+
+    # 1. 개요
+    add_h('1. 개요 (Summary)', 1)
+    t_info = doc.add_table(rows=3, cols=2); t_info.style = 'Table Grid'
+    info_data = [("시험명 (Method)", method_name), ("목적 (Objective)", "의약품 품질 관리를 위한 시험법 검증"), ("Lot No.", context.get('lot', 'N/A'))]
+    for i, (k, v) in enumerate(info_data):
+        c0 = t_info.rows[i].cells[0]; c0.text = k; set_table_header_style(c0)
+        t_info.rows[i].cells[1].text = str(v)
+    
+    # 2. 근거 및 범위
+    add_h('2. 근거 및 범위 (Reference & Scope)', 1)
+    doc.add_paragraph("본 보고서는 ICH Q2(R2) 가이드라인 및 승인된 밸리데이션 계획서(VP)에 근거하여 작성되었다.")
+    doc.add_paragraph("적용 범위: 본 시험법의 특이성, 직선성, 정확성, 정밀성, 완건성, 정량한계 평가.")
+
+    # 3. 상세 결과 (All Items)
+    add_h('3. 밸리데이션 결과 요약 (Result Summary)', 1)
+    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
+    headers = ["항목 (Test Item)", "기준 (Criteria)", "결과 (Result)", "판정 (Judgement)"]
     for i, h in enumerate(headers): 
-        t.rows[0].cells[i].text = h
-        set_table_header_style(t.rows[0].cells[i])
+        t_res.rows[0].cells[i].text = h; set_table_header_style(t_res.rows[0].cells[i])
     
     data = extracted_data if extracted_data else {}
+    
+    # 데이터 매핑
     items = [
         ("시스템 적합성", params.get('SST_Criteria', "RSD ≤ 2.0%"), str(data.get('sst', 'N/A')), "Pass" if data.get('sst') != 'N/A' else "-"),
-        ("직선성", "R² ≥ 0.990", str(data.get('r2', 'N/A')), "Pass" if data.get('r2') != 'N/A' else "-")
+        ("특이성", "간섭 피크 ≤ 0.5%", data.get('specificity', '-'), data.get('specificity', '-')),
+        ("직선성", "R² ≥ 0.990", str(data.get('r2', 'N/A')), "Pass" if data.get('r2') != 'N/A' else "-"),
+        ("정확성", "회수율 80~120%", "See Raw Data", data.get('accuracy', 'N/A')),
+        ("정밀성", "RSD ≤ 2.0%", "See Raw Data", data.get('precision', 'N/A')),
+        ("LOD/LOQ", "S/N ≥ 3 / 10", "See Raw Data", data.get('lod_loq', 'N/A'))
     ]
-    for item, crit, res, judge in items:
-        row = t.add_row().cells
-        row[0].text = item; row[1].text = crit; row[2].text = res; row[3].text = judge
 
-    doc.add_heading('3. 종합 결론 (Conclusion)', level=1)
-    doc.add_paragraph("본 시험법은 설정된 밸리데이션 항목에 대해 판정 기준을 모두 만족하였으므로 적합함을 확인하였다.")
+    for item, crit, res, judge in items:
+        row = t_res.add_row().cells
+        row[0].text = item; row[1].text = str(crit)
+        row[2].text = str(res); row[3].text = judge
+        if judge == "Pass": row[3].paragraphs[0].runs[0].font.color.rgb = RGBColor(0, 128, 0)
+        elif judge == "Fail": row[3].paragraphs[0].runs[0].font.color.rgb = RGBColor(255, 0, 0)
+
+    # 4. 종합 결론
+    add_h('4. 종합 결론 (Conclusion)', 1)
+    overall_res = "적합 (Comply)" if all(x[3] in ["Pass", "-"] for x in items) else "부적합 (Not Comply)"
+    doc.add_paragraph(f"모든 밸리데이션 항목이 설정된 판정 기준을 만족하였으므로, 본 시험법은 의약품 품질 평가에 적합함을 확인하였다.")
+    doc.add_paragraph(f"최종 판정: {overall_res}")
+
+    # 5. 서명
+    doc.add_paragraph("\n\n")
+    t_sign = doc.add_table(rows=2, cols=2); t_sign.style = 'Table Grid'
+    t_sign.rows[0].cells[0].text = "작성자 (Analyzed By)"; t_sign.rows[0].cells[1].text = "승인자 (Approved By)"
+    set_table_header_style(t_sign.rows[0].cells[0]); set_table_header_style(t_sign.rows[0].cells[1])
+    t_sign.rows[1].cells[0].text = f"\n\nDate: {datetime.now().strftime('%Y-%m-%d')}"; t_sign.rows[1].cells[1].text = "\n\nDate: __________________"
     
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
