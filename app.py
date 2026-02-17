@@ -543,23 +543,25 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     # Styles
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
+    # [추가됨] sub_rep 스타일 정의
+    sub_rep = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FCE4D6', 'align':'left'}) 
     cell = workbook.add_format({'border':1, 'align':'center'})
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     num3 = workbook.add_format({'border':1, 'num_format':'0.000', 'align':'center'}) 
-    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'align':'center'})
-    pass_fmt = workbook.add_format({'bold':True, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
-    fail_fmt = workbook.add_format({'bold':True, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
+    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) 
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # num_format 추가
+    pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
+    fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
+    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
+    # [추가됨] crit_fmt 스타일 정의
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'})
 
     # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
-    r = 3; 
-    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
-    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
     
     # Actual Stock Prep Section
-    r += 3
+    r =11
     ws1.merge_range(r, 0, r, 4, "■ Standard Stock Solution Preparation (보정값 적용)", sub_rep); r+=1
     ws1.write(r, 0, "Purity (Potency, %):", sub); ws1.write(r, 1, "", calc); ws1.write(r, 2, "%", cell)
     ws1.write(r+1, 0, "Water Content (%):", sub); ws1.write(r+1, 1, 0, calc); ws1.write(r+1, 2, "% (If applicable)", cell)
@@ -587,7 +589,7 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     ws_sst.conditional_format('F12', {'type': 'cell', 'criteria': '==', 'value': '"Fail"', 'format': fail_fmt})
 
     # [Criteria Added]
-    ws_sst.write('A14', "※ Acceptance Criteria:", crit_fmt)
+    ws_sst.write('A14', "※ Criteria: RSD ≤ 2.0%", crit_fmt)
     ws_sst.write('A15', "1) RSD of RT & Area ≤ 2.0%")
     ws_sst.write('A16', "2) Tailing Factor (1st Inj) ≤ 2.0")
 
@@ -776,8 +778,7 @@ def extract_logbook_data(uploaded_file):
         if not r2_row.empty:
             results['r2'] = df_lin.iloc[r2_row[0], 2]  # C열 값
 
-        # 3. 정확성/정밀성 등은 필요 시 추가 파싱
-        # (단순화를 위해 성공 시 기본값 반환)
+        # 3. 정확성/정밀성 등은 필요 시 추가 파싱 (단순화를 위해 성공 시 기본값 반환)
         if 'sst' in results:
             return results
         else:
