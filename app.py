@@ -560,8 +560,17 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
     
+    # 기본 정보
+    info_rows = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    for i, (k, v) in enumerate(info_rows):
+        ws1.write(i+3, 0, k, sub); ws1.merge_range(i+3, 1, i+3, 4, v if v else "", cell)
+    
+    # Target Conc
+    ws1.write(9, 0, "Target Conc:", sub)
+    ws1.write(9, 1, float(params.get('Target_Conc', 1.0)), auto)
+
     # Actual Stock Prep Section
-    r =11
+    r = 11
     ws1.merge_range(r, 0, r, 4, "■ Standard Stock Solution Preparation (보정값 적용)", sub_rep); r+=1
     ws1.write(r, 0, "Purity (Potency, %):", sub); ws1.write(r, 1, "", calc); ws1.write(r, 2, "%", cell)
     ws1.write(r+1, 0, "Water Content (%):", sub); ws1.write(r+1, 1, 0, calc); ws1.write(r+1, 2, "% (If applicable)", cell)
