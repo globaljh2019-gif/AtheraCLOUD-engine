@@ -552,12 +552,27 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'})
 
     # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
-    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15)
-    ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
-    ws1.write(9, 0, "Target Conc:", sub)
-    ws1.write(9, 1, float(params.get('Target_Conc', 1.0)), auto)
-    actual_stock_ref = "'1. Info'!$B$17
+    ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
+    info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
+    r = 3; 
+    for k, v in info: ws1.write(r, 0, k, sub); ws1.merge_range(r, 1, r, 4, v if v else "", cell); r+=1
+    ws1.write(r+1, 0, "Round Rule:", sub); ws1.merge_range(r+1, 1, r+1, 4, "모든 계산값은 소수점 2째자리에서 절사(ROUNDDOWN)함.", cell)
     
+    # Actual Stock Prep Section
+    r += 3
+    ws1.merge_range(r, 0, r, 4, "■ Standard Stock Solution Preparation (보정값 적용)", sub_rep); r+=1
+    ws1.write(r, 0, "Purity (Potency, %):", sub); ws1.write(r, 1, "", calc); ws1.write(r, 2, "%", cell)
+    ws1.write(r+1, 0, "Water Content (%):", sub); ws1.write(r+1, 1, 0, calc); ws1.write(r+1, 2, "% (If applicable)", cell)
+    ws1.write(r+2, 0, "Actual Weight (mg):", sub); ws1.write(r+2, 1, "", calc); ws1.write(r+2, 2, "mg", cell)
+    ws1.write(r+3, 0, "Final Volume (mL):", sub); ws1.write(r+3, 1, "", calc); ws1.write(r+3, 2, "mL", cell)
+    ws1.write(r+4, 0, "Actual Stock Conc (mg/mL):", sub)
+    # Actual Conc = (Weight * (Purity/100) * ((100-Water)/100)) / Vol
+    # Assuming B11=Purity, B12=Water, B13=Weight, B14=Vol
+    # Formula Row Index: r is variable. Purity at r, Weight at r+2.
+    purity_cell = f"B{r+1}"; water_cell = f"B{r+2}"; weight_cell = f"B{r+3}"; vol_cell = f"B{r+4}"
+    ws1.write_formula(r+4, 1, f"=ROUNDDOWN(({weight_cell}*({purity_cell}/100)*((100-{water_cell})/100))/{vol_cell}, 4)", total_fmt)
+    actual_stock_ref = f"'1. Info'!B{r+5}" # Reference for other sheets
+
     # 2. SST Sheet
     ws_sst = workbook.add_worksheet("2. SST"); ws_sst.set_column('A:F', 15)
     ws_sst.merge_range('A1:F1', 'System Suitability Test (n=6)', header)
