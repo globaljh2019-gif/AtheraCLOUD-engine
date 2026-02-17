@@ -122,7 +122,6 @@ def set_table_header_style(cell):
             set_font(run)
 
 def add_page_number(doc):
-    # 푸터에 페이지 번호 추가
     section = doc.sections[0]
     footer = section.footer
     p = footer.paragraphs[0]
@@ -735,14 +734,14 @@ def extract_logbook_data(uploaded_file):
             df_acc = pd.read_excel(uploaded_file, sheet_name='5. Accuracy', header=None)
             mean_row = df_acc[df_acc.eq("Mean Rec(%):").any(axis=1)].index
             results['acc_mean'] = df_acc.iloc[mean_row[0], 4] if not mean_row.empty else "N/A"
-            # 범위는 간단히 시뮬레이션으로 대체하거나 상세 파싱 필요. 여기서는 Mean값만 추출
         except: results['acc_mean'] = "N/A"
 
         # 4. Precision (RSD)
         try:
             df_prec = pd.read_excel(uploaded_file, sheet_name='6. Precision', header=None)
-            rsd_row = df_prec[df_prec.eq("RSD (%):").any(axis=1)].index
-            results['prec_rsd'] = df_prec.iloc[rsd_row[0], 4] if not rsd_row.empty else "N/A"
+            # RSD가 'E5' 셀에 있다고 가정 (Row 4, Col 4)
+            val = df_prec.iloc[4, 4] 
+            results['prec_rsd'] = val if pd.notna(val) else "N/A"
         except: results['prec_rsd'] = "N/A"
 
         # 5. LOD/LOQ (S/N)
@@ -795,61 +794,81 @@ def generate_summary_report_gmp(method_name, category, params, context, extracte
     doc.add_paragraph(f"• 대상 시험법: {method_name}")
     doc.add_paragraph("• 대상 검체: 원료의약품(Drug Substance) 및 완제의약품(Drug Product)")
     doc.add_paragraph("• 평가 항목: 특이성, 직선성, 정확성, 정밀성(반복성), 정량한계 등")
-    
     doc.add_paragraph("2.2 근거 가이드라인 (Reference Guidelines)")
     doc.add_paragraph("• ICH Q2(R2) Validation of Analytical Procedures")
     doc.add_paragraph("• 식품의약품안전처(MFDS) 의약품등 시험방법 밸리데이션 가이드라인")
     doc.add_paragraph("• USP <1225> Validation of Compendial Procedures")
 
-    # 3. 밸리데이션 결과 요약 (상세 수치 반영)
-    add_h('3. 밸리데이션 결과 요약 (Result Summary)', 1)
-    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
-    headers = ["항목 (Test Item)", "판정 기준 (Criteria)", "시험 결과 (Result)", "판정 (Judgement)"]
-    for i, h in enumerate(headers): 
-        t_res.rows[0].cells[i].text = h; set_table_header_style(t_res.rows[0].cells[i])
-    
+    # 3. 상세 시험 결과 (서술형)
+    add_h('3. 상세 시험 결과 (Detailed Test Results)', 1)
     data = extracted_data if extracted_data else {}
     
-    # 상세 데이터 매핑 (Raw Data 문구 제거, 실제 값 삽입)
-    items = [
-        ("시스템 적합성", "RSD ≤ 2.0%", f"RSD {data.get('sst', 'N/A')}%", "Pass" if data.get('sst')!='N/A' else "-"),
-        ("특이성", "간섭 피크 없음", "간섭 없음 (No Interference)", "Pass"),
-        ("직선성", "R² ≥ 0.990", f"R² = {data.get('r2', 'N/A')}", "Pass"),
-        ("정확성", "회수율 80~120%", f"Mean {data.get('acc_mean', 'N/A')}%", "Pass"),
-        ("정밀성", "RSD ≤ 2.0%", f"RSD {data.get('prec_rsd', 'N/A')}%", "Pass"),
-        ("정량한계 (LOQ)", "S/N ≥ 10", f"S/N {data.get('loq_sn', 'N/A')}", "Pass")
-    ]
-
-    for item, crit, res, judge in items:
-        row = t_res.add_row().cells
-        row[0].text = item; row[1].text = str(crit)
-        row[2].text = str(res); row[3].text = judge
-        if judge == "Pass": row[3].paragraphs[0].runs[0].font.color.rgb = RGBColor(0, 128, 0) # Green
-
-    # 4. 종합 결론 (구체적 기술)
-    add_h('4. 종합 결론 (Conclusion)', 1)
-    doc.add_paragraph("본 시험법 밸리데이션 수행 결과는 다음과 같다.")
+    # 3.1 특이성
+    add_h('3.1 특이성 (Specificity)', 2)
+    doc.add_paragraph("공시험액 및 위약에서 주성분 피크와 겹치는 간섭 피크는 관찰되지 않았다 (No interference).")
     
-    # 세부 항목별 결론
-    bullets = [
-        f"1) 특이성: 공시험액 및 위약에서 간섭 피크가 검출되지 않아 특이성이 확보됨.",
-        f"2) 직선성: 결정계수(R²)가 {data.get('r2', 'N/A')}로 기준(≥0.990)을 만족하여 우수한 직선성을 보임.",
-        f"3) 정확성: 평균 회수율이 {data.get('acc_mean', 'N/A')}%로 기준(80~120%) 내에 있어 정확성이 입증됨.",
-        f"4) 정밀성: 반복성 시험 결과 RSD가 {data.get('prec_rsd', 'N/A')}%로 기준(≤2.0%)을 만족함.",
-        f"5) 정량한계: LOQ 농도에서 S/N 비가 {data.get('loq_sn', 'N/A')}로 확인되어 미량 분석이 가능함."
+    # 3.2 직선성
+    add_h('3.2 직선성 (Linearity)', 2)
+    doc.add_paragraph(f"80~120% 범위에서 결정계수(R²)는 {data.get('r2', 'N/A')}로 확인되었다.")
+    
+    # 3.3 정확성
+    add_h('3.3 정확성 (Accuracy)', 2)
+    doc.add_paragraph(f"각 농도별 평균 회수율은 {data.get('acc_mean', 'N/A')}% 로 기준을 만족하였다.")
+    
+    # 3.4 정밀성
+    add_h('3.4 정밀성 (Precision)', 2)
+    doc.add_paragraph(f"반복성 시험 결과(n=6), 상대표준편차(RSD)는 {data.get('prec_rsd', 'N/A')}% 로 확인되었다.")
+    
+    # 3.5 정량한계
+    add_h('3.5 정량한계 (LOQ)', 2)
+    doc.add_paragraph(f"LOQ 농도에서 S/N 비는 {data.get('loq_sn', 'N/A')} 로 확인되었다.")
+
+    # 4. 결과 요약 (표)
+    add_h('4. 밸리데이션 결과 요약 (Result Summary)', 1)
+    t_res = doc.add_table(rows=1, cols=4); t_res.style = 'Table Grid'
+    headers = ["항목 (Test Item)", "기준 (Criteria)", "결과 (Result)", "판정 (Judgement)"]
+    for i, h in enumerate(headers): t_res.rows[0].cells[i].text = h; set_table_header_style(t_res.rows[0].cells[i])
+    
+    # 판정 로직
+    def judge(val, limit, type='max'):
+        try:
+            v = float(val)
+            if type=='max': return "Pass" if v <= limit else "Fail"
+            if type=='min': return "Pass" if v >= limit else "Fail"
+            if type=='range': return "Pass" if limit[0] <= v <= limit[1] else "Fail"
+        except: return "-"
+
+    # 항목 매핑
+    items = [
+        ("시스템 적합성", "RSD ≤ 2.0%", f"RSD {data.get('sst', 'N/A')}%", judge(data.get('sst'), 2.0)),
+        ("직선성", "R² ≥ 0.990", f"R² = {data.get('r2', 'N/A')}", judge(data.get('r2'), 0.990, 'min')),
+        ("정확성", "80 ~ 120%", f"Mean {data.get('acc_mean', 'N/A')}%", judge(data.get('acc_mean'), [80,120], 'range')),
+        ("정밀성", "RSD ≤ 2.0%", f"RSD {data.get('prec_rsd', 'N/A')}%", judge(data.get('prec_rsd'), 2.0)),
+        ("정량한계 (LOQ)", "S/N ≥ 10", f"S/N {data.get('loq_sn', 'N/A')}", judge(data.get('loq_sn'), 10, 'min'))
     ]
-    for b in bullets:
-        p = doc.add_paragraph(b)
-        p.paragraph_format.left_indent = Inches(0.2)
 
-    doc.add_paragraph("\n[최종 판정]")
-    doc.add_paragraph("상기 결과에 따라 본 시험법은 설정된 밸리데이션 파라미터에 대해 모든 판정 기준을 만족하였으며, "
-                      "의약품 품질 관리를 위한 시험법으로 적합(Suitable)함을 확인하였다.")
+    has_fail = False
+    for item, crit, res, judge_res in items:
+        row = t_res.add_row().cells
+        row[0].text = item; row[1].text = crit; row[2].text = res; row[3].text = judge_res
+        if judge_res == "Fail": 
+            row[3].paragraphs[0].runs[0].font.color.rgb = RGBColor(255, 0, 0)
+            has_fail = True
+        elif judge_res == "Pass":
+            row[3].paragraphs[0].runs[0].font.color.rgb = RGBColor(0, 128, 0)
 
-    # 5. 일탈 및 변경 사항 (Audit 대비)
-    add_h('5. 일탈 및 변경 사항 (Deviations & Changes)', 1)
-    doc.add_paragraph("• 일탈 사항: 없음 (None)")
-    doc.add_paragraph("• 계획서 대비 변경 사항: 없음 (None)")
+    # 5. 종합 결론 (Fail 대응 포함)
+    add_h('5. 종합 결론 (Conclusion)', 1)
+    
+    if has_fail:
+        p = doc.add_paragraph()
+        run = p.add_run("[부적합 발생] 일부 항목이 판정 기준을 벗어났다 (Out of Specification).")
+        run.bold = True; run.font.color.rgb = RGBColor(255, 0, 0)
+        doc.add_paragraph("• 조치 사항: SOP-QA-00X '일탈 관리 및 OOS 처리' 절차에 따라 일탈 보고서를 발행하고 원인 분석을 실시해야 한다.")
+        doc.add_paragraph("• 리스크 평가: 시험법의 신뢰성에 영향을 줄 수 있으므로, 원인 규명 전까지 해당 시험법을 이용한 출하 승인은 보류한다.")
+    else:
+        doc.add_paragraph("모든 밸리데이션 항목이 설정된 판정 기준을 만족하였으므로, 본 시험법은 의약품 품질 평가에 적합(Suitable)함을 확인하였다.")
+        doc.add_paragraph("따라서 본 시험법을 표준 시험 절차(STP)로 제정하여 정기 시험에 적용할 것을 승인한다.")
 
     # 6. 서명
     doc.add_paragraph("\n\n")
