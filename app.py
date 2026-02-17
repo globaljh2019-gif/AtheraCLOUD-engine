@@ -158,18 +158,24 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
     
     ws = workbook.add_worksheet("Master Recipe")
-    ws.set_column('A:A', 35); ws.set_column('B:E', 15); ws.set_column('F:F', 12)
+    ws.set_column('A:F', 18)
     
-    # [기본 정보]
+    # [기본 정보 입력]
     ws.merge_range('A1:F1', f'Validation Material Planner: {method_name}', title_fmt)
     ws.write('A3', "Sample Type:", sub); ws.write('B3', sample_type, cell)
     if sample_type == "Powder (파우더)": ws.write('C3', "Prep Detail:", sub); ws.write_string('D3', powder_info, cell)
-    ws.write('A4', "User Stock Conc:", sub); ws.write('B4', stock_conc, num); ws.write('C4', unit, cell)
-    ws.write('A5', "Target Conc (100%):", sub); ws.write('B5', target_conc, num); ws.write('C5', unit, cell)
-    ws.write('A6', "Target Vol/Vial (mL):", sub); ws.write('B6', req_vol, num)
+    ws.write('A4', "Stock Conc:", sub); ws.write('B4', stock_conc, num); ws.write('C4', unit, cell)
+    ws.write('A5', "Target Conc:", sub); ws.write('B5', target_conc, num); ws.write('C5', unit, cell)
+    ws.write('A6', "Vol/Vial (mL):", sub); ws.write('B6', req_vol, num)
     ws.write('D6', "TOTAL STOCK NEEDED (mL):", sub)
-    row = 8
-
+    
+    # [희석 조제표 작성]
+    ws.write(8, 0, "■ Dilution Scheme (Linearity & Accuracy)", header)
+    ws.write_row(9, 0, ["Level (%)", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], header)
+ 
+    row = 10 
+    start_sum_row = row + 1 # 엑셀 수식용 시작 행 (11행)
+    
     # [공통 섹션 생성 함수]
     def add_section_grouped(main_title, levels, reps):
         nonlocal row
