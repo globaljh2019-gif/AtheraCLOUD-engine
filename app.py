@@ -805,23 +805,39 @@ def generate_summary_report_gmp(method_name, category, params, context, extracte
     
     # 3.1 특이성
     add_h('3.1 특이성 (Specificity)', 2)
-    doc.add_paragraph("공시험액 및 위약에서 주성분 피크와 겹치는 간섭 피크는 관찰되지 않았다 (No interference).")
-    
+    doc.add_paragraph("공시험액 및 위약에서 주성분 피크와 겹치는 간섭 피크는 관찰되지 않아 특이성을 만족하였다.")   
+
     # 3.2 직선성
     add_h('3.2 직선성 (Linearity)', 2)
-    doc.add_paragraph(f"80~120% 범위에서 결정계수(R²)는 {data.get('r2', 'N/A')}로 확인되었다.")
-    
+    r2_val = data.get('r2', 'N/A')
+    if r2_val != 'N/A' and float(r2_val) >= 0.990:
+        doc.add_paragraph(f"80~120% 농도 범위에서 회귀분석 결과, 결정계수(R²)는 {r2_val}로 확인되어 판정 기준(≥0.990)을 만족하는 우수한 직선성을 보였다.")
+    else:
+        doc.add_paragraph(f"결정계수(R²)가 {r2_val}로 확인되어 직선성 기준을 만족하지 못하였다.")
+
     # 3.3 정확성
     add_h('3.3 정확성 (Accuracy)', 2)
-    doc.add_paragraph(f"각 농도별 평균 회수율은 {data.get('acc_mean', 'N/A')}% 로 기준을 만족하였다.")
-    
+    acc_val = data.get('acc_mean', 'N/A')
+    if acc_val != 'N/A' and 80.0 <= float(acc_val) <= 120.0:
+        doc.add_paragraph(f"각 농도별 평균 회수율은 {acc_val}%로 확인되어, 판정 기준(80.0 ~ 120.0%)을 만족하였다.")
+    else:
+        doc.add_paragraph(f"평균 회수율이 {acc_val}%로 확인되어 정확성 기준을 벗어났다.")
+
     # 3.4 정밀성
     add_h('3.4 정밀성 (Precision)', 2)
-    doc.add_paragraph(f"반복성 시험 결과(n=6), 상대표준편차(RSD)는 {data.get('prec_rsd', 'N/A')}% 로 확인되었다.")
-    
+    prec_val = data.get('prec_rsd', 'N/A')
+    if prec_val != 'N/A' and float(prec_val) <= 2.0:
+        doc.add_paragraph(f"반복성 시험 결과(n=6), 피크 면적의 상대표준편차(RSD)는 {prec_val}%로 확인되어 판정 기준(≤2.0%)을 만족하였다.")
+    else:
+        doc.add_paragraph(f"RSD가 {prec_val}%로 확인되어 정밀성 기준을 만족하지 못하였다.")
+
     # 3.5 정량한계
     add_h('3.5 정량한계 (LOQ)', 2)
-    doc.add_paragraph(f"LOQ 농도에서 S/N 비는 {data.get('loq_sn', 'N/A')} 로 확인되었다.")
+    loq_val = data.get('loq_sn', 'N/A')
+    if loq_val != 'N/A' and float(loq_val) >= 10.0:
+        doc.add_paragraph(f"LOQ 농도에서 S/N 비는 {loq_val}로 확인되어 판정 기준(≥10)을 만족하였다.")
+    else:
+        doc.add_paragraph(f"S/N 비가 {loq_val}로 확인되어 LOQ 기준 미달이다.")
 
     # 4. 결과 요약 (표)
     add_h('4. 밸리데이션 결과 요약 (Result Summary)', 1)
@@ -864,12 +880,12 @@ def generate_summary_report_gmp(method_name, category, params, context, extracte
         p = doc.add_paragraph()
         run = p.add_run("[부적합 발생] 일부 항목이 판정 기준을 벗어났다 (Out of Specification).")
         run.bold = True; run.font.color.rgb = RGBColor(255, 0, 0)
-        doc.add_paragraph("• 조치 사항: SOP-QA-00X '일탈 관리 및 OOS 처리' 절차에 따라 일탈 보고서를 발행하고 원인 분석을 실시해야 한다.")
-        doc.add_paragraph("• 리스크 평가: 시험법의 신뢰성에 영향을 줄 수 있으므로, 원인 규명 전까지 해당 시험법을 이용한 출하 승인은 보류한다.")
+        doc.add_paragraph("• 조치 사항: SOP-QA-00X '일탈 관리 및 OOS 처리' 절차에 따라 일탈 보고서를 발행하고 원인 분석(Root Cause Analysis)을 실시해야 한다.")
+        doc.add_paragraph("• 리스크 평가: 시험법의 정확성 및 재현성에 중대한 영향을 미칠 수 있으므로, 원인 규명 및 재시험 완료 전까지 해당 시험법의 사용을 중단한다.")
     else:
         doc.add_paragraph("모든 밸리데이션 항목이 설정된 판정 기준을 만족하였으므로, 본 시험법은 의약품 품질 평가에 적합(Suitable)함을 확인하였다.")
         doc.add_paragraph("따라서 본 시험법을 표준 시험 절차(STP)로 제정하여 정기 시험에 적용할 것을 승인한다.")
-
+        
     # 6. 서명
     doc.add_paragraph("\n\n")
     t_sign = doc.add_table(rows=2, cols=2); t_sign.style = 'Table Grid'
