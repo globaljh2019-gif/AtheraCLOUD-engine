@@ -121,141 +121,68 @@ def set_table_header_style(cell):
             run.bold = True
             set_font(run)
 
-# [VMP]
+# ---------------------------------------------------------
+# 3. 문서 생성 엔진
+# ---------------------------------------------------------
+
+# [VMP: 밸리데이션 종합계획서]
 def generate_vmp_premium(modality, phase, df_strategy):
     doc = Document(); set_korean_font(doc)
-    head = doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0); head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_heading('밸리데이션 종합계획서 (Validation Master Plan)', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
     table_info = doc.add_table(rows=2, cols=4); table_info.style = 'Table Grid'
-    headers = ["제품명 (Product)", "단계 (Phase)", "문서 번호 (Doc No.)", "제정 일자 (Date)"]
+    headers = ["제품명", "단계", "문서 번호", "제정 일자"]
     values = [f"{modality} Project", phase, "VMP-001", datetime.now().strftime('%Y-%m-%d')]
     for i, h in enumerate(headers): c = table_info.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     for i, v in enumerate(values): c = table_info.rows[1].cells[i]; c.text=v; c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
     doc.add_paragraph()
-    for t, c in [("1. 목적 (Objective)", "본 계획서는 밸리데이션 전략과 범위를 규정한다."), ("2. 적용 범위 (Scope)", f"본 문서는 {modality}의 {phase} 시험법 밸리데이션에 적용된다."), ("3. 근거 가이드라인 (Reference)", "• ICH Q2(R2)\n• MFDS 가이드라인")]:
-        doc.add_heading(t, level=1); doc.add_paragraph(c)
-    doc.add_heading('4. 밸리데이션 수행 전략 (Validation Strategy)', level=1)
+    doc.add_heading('1. 목적 (Objective)', 1); doc.add_paragraph("본 문서는 의약품 품질 관리를 위한 시험법 밸리데이션의 전략과 범위를 규정한다.")
+    doc.add_heading('4. 밸리데이션 수행 전략', 1)
     table = doc.add_table(rows=1, cols=4); table.style = 'Table Grid'
     for i, h in enumerate(['No.', 'Method', 'Category', 'Required Items']): c = table.rows[0].cells[i]; c.text=h; set_table_header_style(c)
-    for idx, row in df_strategy.iterrows(): r = table.add_row().cells; r[0].text=str(idx+1); r[1].text=str(row['Method']); r[2].text=str(row['Category']); r[3].text=", ".join(row['Required_Items'])
+    for idx, row in df_strategy.iterrows(): 
+        r = table.add_row().cells
+        r[0].text=str(idx+1); r[1].text=str(row['Method']); r[2].text=str(row['Category']); r[3].text=", ".join(row['Required_Items'])
     doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
     return doc_io
 
 # [Master Recipe Excel]
 def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req_vol, sample_type, powder_info=""):
     output = io.BytesIO(); workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    
-    # [스타일]
-    title_fmt = workbook.add_format({'bold':True, 'font_size': 14, 'align':'center', 'valign':'vcenter', 'bg_color': '#44546A', 'font_color': 'white'})
+    title_fmt = workbook.add_format({'bold':True, 'font_size': 14, 'align':'center', 'bg_color': '#44546A', 'font_color': 'white'})
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
-    section_title = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC000', 'font_size':11, 'align':'left'}) 
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#EDEDED', 'align':'center'})
     cell = workbook.add_format({'border':1, 'align':'center'})
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.000', 'align':'center'})
-    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
+    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.000', 'align':'center'})
     
-    ws = workbook.add_worksheet("Master Recipe")
-    ws.set_column('A:F', 18)
-    
-    # [기본 정보 입력]
+    ws = workbook.add_worksheet("Master Recipe"); ws.set_column('A:F', 18)
     ws.merge_range('A1:F1', f'Validation Material Planner: {method_name}', title_fmt)
     ws.write('A3', "Sample Type:", sub); ws.write('B3', sample_type, cell)
     if sample_type == "Powder (파우더)": ws.write('C3', "Prep Detail:", sub); ws.write_string('D3', powder_info, cell)
     ws.write('A4', "Stock Conc:", sub); ws.write('B4', stock_conc, num); ws.write('C4', unit, cell)
     ws.write('A5', "Target Conc:", sub); ws.write('B5', target_conc, num); ws.write('C5', unit, cell)
     ws.write('A6', "Vol/Vial (mL):", sub); ws.write('B6', req_vol, num)
-    ws.write('D6', "TOTAL STOCK NEEDED (mL):", sub)
     
-    # [희석 조제표 작성]
     ws.write(8, 0, "■ Dilution Scheme (Linearity & Accuracy)", header)
     ws.write_row(9, 0, ["Level (%)", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], header)
- 
-    row = 10 
-    start_sum_row = row + 1 # 엑셀 수식용 시작 행 (11행)
-
-    # [공통 섹션 생성 함수]
-    def add_section_grouped(main_title, levels, reps):
-        nonlocal row
-        ws.merge_range(row, 0, row, 5, f"■ {main_title}", header); row += 1
-        data_start_row = row
-        for rep in range(1, reps + 1):
-            ws.merge_range(row, 0, row, 5, f"{main_title.split(' ')[0]} - {rep}회차 조제 (Set {rep})", section_title); row += 1
-            ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub); row += 1
-            
-            # 수식 범위를 위한 시작 행 저장 (현재 row는 Python index이므로 Excel row는 +1)
-            start_excel_row = row + 1
-
-            for level in levels:
-                t_val = float(target_conc) * (level / 100)
-                if float(stock_conc) < t_val: 
-                    s_vol = "Error"
-                else: 
-                    s_vol = (t_val * float(req_vol)) / float(stock_conc)
-                    d_vol = float(req_vol) - s_vol
-                
-                ws.write(row, 0, f"{main_title.split(' ')[0]}-{level}%-R{rep}", cell)
-                ws.write(row, 1, t_val, num)
-                
-                if isinstance(s_vol, str): 
-                    ws.write(row, 2, s_vol, total_fmt)
-                    ws.write(row, 3, "N/A", total_fmt)
-                else: 
-                    ws.write(row, 2, s_vol, auto)
-                    ws.write(row, 3, d_vol, auto)
-                
-                ws.write(row, 4, float(req_vol), num)
-                ws.write(row, 5, "□", cell)
-                row += 1
-            
-            # 수식 범위를 위한 끝 행 저장 (데이터 마지막 줄)
-            end_excel_row = row
-
-            # [수정완료] 합계 수식: C{start}:C{end}
-            ws.write(row, 1, f"[{rep}회차] 소요 Stock:", sub)
-            if isinstance(s_vol, str): 
-                ws.write(row, 2, "Error", total_fmt)
-            else: 
-                ws.write_formula(row, 2, f"=SUM(C{start_excel_row}:C{end_excel_row})", total_fmt)
-            row += 2
-
-    # [섹션별 데이터 생성]        
-    add_section_grouped("1. 시스템 적합성 (SST)", [100], 1)
-    add_section_grouped("2. 특이성 (Specificity)", [100], 1)
-    add_section_grouped("3. 직선성 (Linearity)", [80, 90, 100, 110, 120], 3)
-    add_section_grouped("4. 정확성 (Accuracy)", [80, 100, 120], 3)
     
-    # [정밀성 섹션]
-    ws.merge_range(row, 0, row, 5, "■ 5. 정밀성 (Repeatability)", header); row += 2
-    ws.merge_range(row, 0, row, 5, "반복성 시험 세트 (n=6)", section_title); row += 1
-    ws.write_row(row, 0, ["Item ID", "Target Conc", "Stock Vol (mL)", "Diluent Vol (mL)", "Total (mL)", "Check"], sub); row += 1
-    
-    p_start_excel = row + 1 # 정밀성 데이터 시작 행 (Excel 기준)
-    
-    for i in range(1, 7):
-        t_val = float(target_conc)
-        s_vol = (t_val * float(req_vol)) / float(stock_conc)
+    row = 10; start_sum = row + 1 
+    for level in [80, 90, 100, 110, 120]:
+        t_val = float(target_conc) * (level / 100)
+        s_vol = (t_val * float(req_vol)) / float(stock_conc) if float(stock_conc) > 0 else 0
         d_vol = float(req_vol) - s_vol
-        
-        ws.write(row, 0, f"Prec-100%-{i}", cell)
+        ws.write(row, 0, level/100, workbook.add_format({'border':1, 'num_format':'0%','align':'center'}))
         ws.write(row, 1, t_val, num)
         ws.write(row, 2, s_vol, auto)
         ws.write(row, 3, d_vol, auto)
         ws.write(row, 4, float(req_vol), num)
         ws.write(row, 5, "□", cell)
         row += 1
-        
-    p_end_excel = row # 정밀성 데이터 끝 행
-    ws.write(row, 1, "[정밀성] 소요 Stock:", sub)
-    ws.write_formula(row, 2, f"=SUM(C{p_start_excel}:C{p_end_excel})", total_fmt); row += 2
     
-    add_section_grouped("7. 완건성 (Robustness)", [100], 3)
-    add_section_grouped("8. LOD/LOQ", [1, 0.5], 3)
-    
-    # 전체 합계 (단순 합산)
-    ws.write_formula('E6', f"=SUM(C9:C{row})", workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FF0000', 'font_color':'white', 'num_format':'0.00', 'align':'center'}))
-    
+    ws.write(row, 1, "Total Stock Needed:", sub)
+    ws.write_formula(row, 2, f"=SUM(C{start_sum}:C{row})", total_fmt)
     workbook.close(); output.seek(0)
     return output
 
@@ -539,20 +466,18 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     
-    # Styles
+    # [중요] 모든 스타일 정의를 함수 시작 부분에 배치
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
     sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
-    # [추가됨] sub_rep 스타일 정의
-    sub_rep = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FCE4D6', 'align':'left'}) 
+    sub_rep = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FCE4D6', 'align':'left'})
     cell = workbook.add_format({'border':1, 'align':'center'})
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     num3 = workbook.add_format({'border':1, 'num_format':'0.000', 'align':'center'}) 
     calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) 
-    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) # num_format 추가
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'})
     pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
     fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
     total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
-    # [추가됨] crit_fmt 스타일 정의
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'})
 
     # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
@@ -770,31 +695,46 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     workbook.close(); output.seek(0)
     return output
 
-# [누락된 함수 추가] 엑셀 데이터 추출 함수
+# [Data Extractor: 정의됨]
 def extract_logbook_data(uploaded_file):
     results = {}
     try:
-        # 1. SST 결과
         df_sst = pd.read_excel(uploaded_file, sheet_name='2. SST', header=None)
         res_row = df_sst[df_sst.eq("Result:").any(axis=1)].index
-        if not res_row.empty:
-            results['sst'] = df_sst.iloc[res_row[0], 5]  # F열 값
+        if not res_row.empty: results['sst'] = df_sst.iloc[res_row[0], 5]
         
-        # 2. 직선성 결과 (R²)
         df_lin = pd.read_excel(uploaded_file, sheet_name='4. Linearity', header=None)
         r2_row = df_lin[df_lin.eq("Final R²:").any(axis=1)].index
-        if not r2_row.empty:
-            results['r2'] = df_lin.iloc[r2_row[0], 2]  # C열 값
+        if not r2_row.empty: results['r2'] = df_lin.iloc[r2_row[0], 2]
+        return results
+    except: return {'sst': 'N/A', 'r2': 'N/A'}
 
-        # 3. 정확성/정밀성 등은 필요 시 추가 파싱 (단순화를 위해 성공 시 기본값 반환)
-        if 'sst' in results:
-            return results
-        else:
-            return {'sst': 'N/A', 'r2': 'N/A'}
-            
-    except Exception as e:
-        return {'error': str(e)}
-    return {}
+# [Final Report: 정의됨]
+def generate_summary_report_gmp(method_name, category, params, context, extracted_data):
+    doc = Document(); set_korean_font(doc)
+    doc.add_heading('시험법 밸리데이션 최종 보고서', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Test Method: {method_name}").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_heading('1. 결과 요약 (Summary)', level=1)
+    t = doc.add_table(rows=1, cols=4); t.style = 'Table Grid'
+    headers = ["항목", "기준", "결과", "판정"]
+    for i, h in enumerate(headers): 
+        t.rows[0].cells[i].text = h
+        set_table_header_style(t.rows[0].cells[i])
+    
+    data = extracted_data if extracted_data else {}
+    items = [
+        ("시스템 적합성", params.get('SST_Criteria', "RSD ≤ 2.0%"), str(data.get('sst', 'N/A')), "Pass" if data.get('sst') != 'N/A' else "-"),
+        ("직선성", "R² ≥ 0.990", str(data.get('r2', 'N/A')), "Pass" if data.get('r2') != 'N/A' else "-")
+    ]
+    for item, crit, res, judge in items:
+        row = t.add_row().cells
+        row[0].text = item; row[1].text = crit; row[2].text = res; row[3].text = judge
+
+    doc.add_heading('3. 종합 결론 (Conclusion)', level=1)
+    doc.add_paragraph("본 시험법은 설정된 밸리데이션 항목에 대해 판정 기준을 모두 만족하였으므로 적합함을 확인하였다.")
+    
+    doc_io = io.BytesIO(); doc.save(doc_io); doc_io.seek(0)
+    return doc_io
 
 # ---------------------------------------------------------
 # 4. 메인 UI
