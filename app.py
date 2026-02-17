@@ -12,6 +12,11 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 # ---------------------------------------------------------
+# 0. 페이지 설정
+# ---------------------------------------------------------
+st.set_page_config(page_title="AtheraCLOUD Validation Suite", layout="wide")
+
+# ---------------------------------------------------------
 # 1. 설정 및 데이터 로딩
 # ---------------------------------------------------------
 try:
@@ -104,6 +109,10 @@ def set_korean_font(doc):
     style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
     style.font.size = Pt(10)
 
+def set_font(run):
+    run.font.name = 'Times New Roman'
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')    
+
 def set_table_header_style(cell):
     tcPr = cell._element.get_or_add_tcPr()
     shading_elm = OxmlElement('w:shd')
@@ -123,6 +132,7 @@ def generate_vmp_premium(modality, phase, df_strategy):
     values = [f"{modality} Project", phase, "VMP-001", datetime.now().strftime('%Y-%m-%d')]
     for i, h in enumerate(headers): c = table_info.rows[0].cells[i]; c.text=h; set_table_header_style(c)
     for i, v in enumerate(values): c = table_info.rows[1].cells[i]; c.text=v; c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
     doc.add_paragraph()
     for t, c in [("1. 목적 (Objective)", "본 계획서는 밸리데이션 전략과 범위를 규정한다."), ("2. 적용 범위 (Scope)", f"본 문서는 {modality}의 {phase} 시험법 밸리데이션에 적용된다."), ("3. 근거 가이드라인 (Reference)", "• ICH Q2(R2)\n• MFDS 가이드라인")]:
         doc.add_heading(t, level=1); doc.add_paragraph(c)
@@ -814,10 +824,14 @@ with col2:
 
             with t3:
                 st.markdown("### 📊 최종 결과 보고서")
-                sel_r = st.selectbox("Report:", my_plan["Method"].unique(), key="r")
-                with st.form("rep"):
-                    l = st.text_input("Lot"); d = st.text_input("Date"); a = st.text_input("Analyst")
-                    s = st.text_input("SST"); m = st.text_input("Main Result")
-                    if st.form_submit_button("Generate Report"):
-                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot_no':l, 'date':d, 'analyst':a, 'sst_result':s, 'main_result':m})
-                        st.download_button("📥 Report", doc, "Report.docx")
+                st.info("작성된 엑셀 파일을 업로드하면 결과가 자동 반영됩니다.")
+                uploaded_log = st.file_uploader("📂 Upload Filled Logbook", type=["xlsx"])
+                sel_r = st.selectbox("Report for:", my_plan["Method"].unique(), key="r")
+                
+                if uploaded_log:
+                    data = extract_logbook_data(uploaded_log)
+                    st.success("데이터 추출 완료!")
+                    st.json(data)
+                    if st.button("Generate Final Report"):
+                        doc = generate_summary_report_gmp(sel_r, "Cat", get_method_params(sel_r), {'lot': 'Test'}, data)
+                        st.download_button("📥 Download Report", doc, "Final_Report.docx")
