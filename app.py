@@ -175,7 +175,7 @@ def generate_master_recipe_excel(method_name, target_conc, unit, stock_conc, req
  
     row = 10 
     start_sum_row = row + 1 # 엑셀 수식용 시작 행 (11행)
-    
+
     # [공통 섹션 생성 함수]
     def add_section_grouped(main_title, levels, reps):
         nonlocal row
@@ -542,18 +542,15 @@ def generate_smart_excel(method_name, category, params, simulate=False):
     
     # Styles
     header = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#4472C4', 'font_color':'white', 'align':'center', 'valign':'vcenter'})
-    sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center', 'valign':'vcenter'})
-    sub_rep = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FCE4D6', 'align':'left'}) 
+    sub = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#D9E1F2', 'align':'center'})
     cell = workbook.add_format({'border':1, 'align':'center'})
     num = workbook.add_format({'border':1, 'num_format':'0.00', 'align':'center'})
     num3 = workbook.add_format({'border':1, 'num_format':'0.000', 'align':'center'}) 
-    calc = workbook.add_format({'border':1, 'bg_color':'#FFFFCC', 'num_format':'0.00', 'align':'center'}) 
-    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'num_format':'0.00', 'align':'center'}) 
-    pass_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
-    fail_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
-    total_fmt = workbook.add_format({'bold':True, 'border':1, 'bg_color':'#FFFF00', 'num_format':'0.00', 'align':'center'})
+    auto = workbook.add_format({'border':1, 'bg_color':'#E2EFDA', 'align':'center'})
+    pass_fmt = workbook.add_format({'bold':True, 'bg_color':'#C6EFCE', 'font_color':'#006100', 'align':'center'})
+    fail_fmt = workbook.add_format({'bold':True, 'bg_color':'#FFC7CE', 'font_color':'#9C0006', 'align':'center'})
     crit_fmt = workbook.add_format({'bold':True, 'font_color':'red', 'align':'left'})
-
+    
     # 1. Info Sheet (Enhanced with Actual Weighing & Purity)
     ws1 = workbook.add_worksheet("1. Info"); ws1.set_column('A:A', 25); ws1.set_column('B:E', 15); ws1.merge_range('A1:E1', f'GMP Logbook: {method_name}', header)
     info = [("Date", datetime.now().strftime("%Y-%m-%d")), ("Instrument", params.get('Instrument')), ("Column", params.get('Column_Plate')), ("Analyst", "")]
@@ -762,6 +759,33 @@ def generate_smart_excel(method_name, category, params, simulate=False):
 
     workbook.close(); output.seek(0)
     return output
+
+# [누락된 함수 추가] 엑셀 데이터 추출 함수
+def extract_logbook_data(uploaded_file):
+    results = {}
+    try:
+        # 1. SST 결과
+        df_sst = pd.read_excel(uploaded_file, sheet_name='2. SST', header=None)
+        res_row = df_sst[df_sst.eq("Result:").any(axis=1)].index
+        if not res_row.empty:
+            results['sst'] = df_sst.iloc[res_row[0], 5]  # F열 값
+        
+        # 2. 직선성 결과 (R²)
+        df_lin = pd.read_excel(uploaded_file, sheet_name='4. Linearity', header=None)
+        r2_row = df_lin[df_lin.eq("Final R²:").any(axis=1)].index
+        if not r2_row.empty:
+            results['r2'] = df_lin.iloc[r2_row[0], 2]  # C열 값
+
+        # 3. 정확성/정밀성 등은 필요 시 추가 파싱
+        # (단순화를 위해 성공 시 기본값 반환)
+        if 'sst' in results:
+            return results
+        else:
+            return {'sst': 'N/A', 'r2': 'N/A'}
+            
+    except Exception as e:
+        return {'error': str(e)}
+    return {}
 
 # ---------------------------------------------------------
 # 4. 메인 UI
