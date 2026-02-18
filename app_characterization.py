@@ -4,6 +4,7 @@ from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement # <--- 핵심: 이 도구가 추가되었습니다.
 import io
 from datetime import datetime
 
@@ -59,6 +60,15 @@ def get_method_database(modality):
 # ==========================================
 # 2. Document Generator (Report Structure Updated)
 # ==========================================
+
+# [수정된 부분] 셀 배경색을 칠하는 안전한 함수
+def set_cell_background(cell, color_hex):
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color_hex)
+    cell._element.get_or_add_tcPr().append(shd)
+
 def generate_ind_report(product_name, modality, phase, selected_methods):
     doc = Document()
     
@@ -83,12 +93,12 @@ def generate_ind_report(product_name, modality, phase, selected_methods):
     table.style = 'Table Grid'
     headers = ['Category', 'Quality Attribute', 'Test Method']
     
-    # 테이블 헤더 스타일
+    # 테이블 헤더 스타일 (수정됨)
     for i, h in enumerate(headers):
         cell = table.cell(0, i)
         cell.text = h
         cell.paragraphs[0].runs[0].bold = True
-        cell._element.tcPr.append(qn('w:shd', {'w:fill': 'E7E6E6'}))
+        set_cell_background(cell, 'E7E6E6') # 안전한 함수 사용
 
     # 테이블 내용 (Decision)
     for idx, row in selected_methods.iterrows():
@@ -159,12 +169,6 @@ def main():
     # 탭 순서 재배치 (Plan -> Decision -> Development)
     tab1, tab2, tab3 = st.tabs(["1️⃣ Comprehensive Plan (Output)", "2️⃣ Method Decision (Select)", "3️⃣ Method Development (Guide)"])
 
-    # ------------------------------------------------------------------
-    # 중요: Streamlit의 실행 순서상, 'Method Decision'(Tab2)의 입력값을
-    # 'Comprehensive Plan'(Tab1)에서 보여주려면
-    # 코드 상에서는 Tab 2 로직을 먼저 처리해야 합니다.
-    # ------------------------------------------------------------------
-
     # --- [Logic for Tab 2] Method Decision (Selection) ---
     with tab2:
         st.subheader("Method Decision (Test Item Selection)")
@@ -188,13 +192,6 @@ def main():
         st.markdown("Based on your selection in Tab 2, here is the final plan.")
         
         if len(selected_rows) > 0:
-            # 결과 미리보기 (깔끔한 테이블)
-            st.dataframe(
-                selected_rows[['Category', 'Attribute', 'Method']], 
-                use_container_width=True,
-                hide_index=True
-            )
-            
             # 리포트 생성 준비
             final_selection = pd.merge(selected_rows, df_db, on=['Category', 'Attribute', 'Method', 'Tier'], how='left')
             # merge시 중복 컬럼 처리
@@ -204,6 +201,14 @@ def main():
             doc_file = generate_ind_report(product_name, modality, phase, final_selection)
             
             st.success("The comprehensive plan is ready.")
+            
+            # 결과 미리보기 (깔끔한 테이블) - 에러 발생하지 않도록 순서 조정
+            st.dataframe(
+                selected_rows[['Category', 'Attribute', 'Method']], 
+                use_container_width=True,
+                hide_index=True
+            )
+
             st.download_button(
                 label="📄 Download Comprehensive Plan (.docx)",
                 data=doc_file,
