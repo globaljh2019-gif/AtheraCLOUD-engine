@@ -9,6 +9,27 @@ import io
 from datetime import datetime
 
 # ==========================================
+# 0. Notion Master Blueprint 기반 지식 베이스
+# ==========================================
+def get_notion_master_db(lang_code):
+    if lang_code == "KR":
+        return [
+            {"Category": "1. 구조적 특성", "Attribute": "1차 구조 (아미노산 서열)", "Method": "Peptide Mapping (LC-MS/MS)", "Tier": "Tier 1", "Rationale": "아미노산 서열 일치성 및 PTM 확인 필수", "Dev_Strategy": "Trypsin 소화 효율 최적화 및 Coverage 95% 이상 확보 전략."},
+            {"Category": "1. 구조적 특성", "Attribute": "당쇄 프로파일 (N-Glycan)", "Method": "HILIC-FLD / MS", "Tier": "Tier 1", "Rationale": "면역원성 및 이펙터 기능(ADCC) 영향 분석", "Dev_Strategy": "2-AB 라벨링 효율 및 주요 당쇄(G0F, G1F 등) 분리능 최적화."},
+            {"Category": "2. 물리화학적 성질", "Attribute": "전하 변이체 (Charge Variants)", "Method": "CEX-HPLC / cIEF", "Tier": "Tier 1", "Rationale": "단백질 안정성 및 불순물 프로파일 확인", "Dev_Strategy": "pH Gradient를 이용한 Acidic/Basic 변이체 분리능 극대화."},
+            {"Category": "2. 물리화학적 성질", "Attribute": "크기 변이체 (응집체)", "Method": "SEC-HPLC", "Tier": "Tier 1", "Rationale": "단백질 응집에 따른 안전성 위험 관리", "Dev_Strategy": "비특이적 결합 방지를 위한 이동상 염 농도 및 유속 최적화."},
+            {"Category": "3. 생물학적 활성", "Attribute": "결합 역가 (Binding Affinity)", "Method": "SPR (Biacore) / ELISA", "Tier": "Tier 1", "Rationale": "항원-항체 결합력(KD) 및 특이성 입증", "Dev_Strategy": "Chip 표면 고정화 농도 최적화 및 Kinetics 분석 정밀도 확보."},
+        ]
+    else:
+        return [
+            {"Category": "1. Structural", "Attribute": "Primary Structure", "Method": "Peptide Mapping (LC-MS/MS)", "Tier": "Tier 1", "Rationale": "Sequence confirmation and PTM site mapping", "Dev_Strategy": "Optimize digestion and target >95% sequence coverage."},
+            {"Category": "1. Structural", "Attribute": "Glycan Profile (N-linked)", "Method": "HILIC-FLD / MS", "Tier": "Tier 1", "Rationale": "Impact on immunogenicity and ADCC activity", "Dev_Strategy": "Maximize labeling efficiency and resolve major glycoforms."},
+            {"Category": "2. Physicochemical", "Attribute": "Charge Variants", "Method": "CEX-HPLC / cIEF", "Tier": "Tier 1", "Rationale": "Assessment of stability and variant profile", "Dev_Strategy": "Optimize pH gradient for acidic/basic peak resolution."},
+            {"Category": "2. Physicochemical", "Attribute": "Size Variants (Aggregates)", "Method": "SEC-HPLC", "Tier": "Tier 1", "Rationale": "Safety risk management for protein aggregation", "Dev_Strategy": "Screen mobile phase salt concentration to prevent non-specific binding."},
+            {"Category": "3. Biological", "Attribute": "Binding Affinity", "Method": "SPR (Biacore) / ELISA", "Tier": "Tier 1", "Rationale": "Demonstrate antigen-antibody binding (KD)", "Dev_Strategy": "Optimize ligand density and ensure kinetic data quality."},
+        ]
+
+# ==========================================
 # 1. 지식 베이스 (Database - Dual Language)
 # ==========================================
 def get_method_database(modality, lang):
