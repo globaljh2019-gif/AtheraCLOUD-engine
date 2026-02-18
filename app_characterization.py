@@ -1,288 +1,233 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import numpy as np
-import matplotlib.pyplot as plt
 from docx import Document
-from docx.shared import Pt, Inches # Inches 에러 해결됨
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 import io
 from datetime import datetime
 
 # ==========================================
-# 1. 데이터 정의 (Data Dictionary)
+# 1. Knowledge Base (ICH Q6B & Development Guide)
 # ==========================================
-def get_mab_characterization_data(phase):
-    """ICH Q6B 가이드라인 기반 mAb 특성분석 항목"""
-    data = [
-        {"Category": "1. Structure", "Attribute": "Primary Structure", "Method": "Peptide Mapping (LC-MS/MS)"},
-        {"Category": "1. Structure", "Attribute": "Intact Mass", "Method": "LC-MS (Q-TOF)"},
-        {"Category": "2. Physicochemical", "Attribute": "Charge Variants", "Method": "CEX-HPLC"},
-        {"Category": "2. Physicochemical", "Attribute": "Size Variants (Aggregates)", "Method": "SEC-HPLC"},
-        {"Category": "2. Physicochemical", "Attribute": "Glycan Profile", "Method": "N-Glycan Profiling"},
-        {"Category": "3. Biological Activity", "Attribute": "Potency", "Method": "ELISA"},
-        {"Category": "4. Impurities", "Attribute": "HCP", "Method": "ELISA"},
-    ]
-    return pd.DataFrame(data)
-
-def generate_demo_sec_data():
-    """SEC-HPLC 크로마토그램 데모 데이터 생성"""
-    time = np.linspace(0, 20, 1000)
-    main_peak = 100 * np.exp(-0.5 * ((time - 10) / 0.5)**2)
-    hmw = 2 * np.exp(-0.5 * ((time - 8.5) / 0.4)**2)
-    lmw = 1 * np.exp(-0.5 * ((time - 12) / 0.6)**2)
-    noise = np.random.normal(0, 0.1, 1000)
-    signal = main_peak + hmw + lmw + noise
-    return pd.DataFrame({"Time (min)": time, "Absorbance (mAU)": signal})
-
-# ==========================================
-# 2. 문서 생성 로직 (Word Generator)
-# ==========================================
-
-# (A) 종합계획서 (Study Plan)
-def generate_word_report(df, product_name, phase):
-    doc = Document()
-    style = doc.styles['Normal']
-    style.font.name = 'Malgun Gothic'
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
-
-    head = doc.add_heading(f'{product_name} Characterization Study Plan', 0)
-    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-    doc.add_paragraph(f"Phase: {phase}")
-    doc.add_paragraph("-" * 50)
-
-    doc.add_heading('1. Introduction', level=1)
-    doc.add_paragraph(f"본 문서는 {product_name}의 특성분석 시험 계획을 기술한다.")
-
-    doc.add_heading('2. Test Items & Methods', level=1)
-    table = doc.add_table(rows=1, cols=3)
-    table.style = 'Table Grid'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Category'
-    hdr_cells[1].text = 'Quality Attribute'
-    hdr_cells[2].text = 'Analytical Method'
-    
-    for cell in hdr_cells:
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.bold = True
-    
-    for _, row in df.iterrows():
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(row['Category'])
-        row_cells[1].text = str(row['Attribute'])
-        row_cells[2].text = str(row['Method'])
-        
-    bio = io.BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio
-
-# (B) [브랜딩 적용] 분석 결과 보고서 (Analysis Report)
-def generate_analysis_report(raw_data, result_table, product_name):
+def get_method_database(modality):
     """
-    SEC-HPLC 분석 결과 + GMP 스타일 헤더/결재란 포함
+    모달리티별 시험 항목 및 개발 가이드 DB
     """
+    if modality == "Monoclonal Antibody (mAb)":
+        data = [
+            {
+                "Category": "1. Structure", "Attribute": "Primary Structure", 
+                "Method": "Peptide Mapping (LC-MS/MS)", "Tier": "Tier 1",
+                "Dev_Strategy": "Optimization of digestion time (4h vs overnight) & Enzyme:Substrate ratio (1:20 vs 1:50). Target >95% coverage."
+            },
+            {
+                "Category": "1. Structure", "Attribute": "Glycan Profile", 
+                "Method": "HILIC-FLD / MS", "Tier": "Tier 1",
+                "Dev_Strategy": "Fluorescent labeling efficiency check (2-AB vs RapiFluor). Column temp optimization (45-60°C) for sialylated species resolution."
+            },
+            {
+                "Category": "2. Physicochemical", "Attribute": "Charge Variants", 
+                "Method": "CEX-HPLC (Salt Gradient)", "Tier": "Tier 1",
+                "Dev_Strategy": "Buffer pH screening (pH 5.5 - 7.0). Gradient slope optimization to separate acidic/basic variants from main peak."
+            },
+            {
+                "Category": "2. Physicochemical", "Attribute": "Size Variants (Aggregates)", 
+                "Method": "SEC-HPLC", "Tier": "Tier 1",
+                "Dev_Strategy": "Mobile phase salt conc. (200-500mM) screening to minimize non-specific binding. Flow rate study for resolution."
+            },
+            {
+                "Category": "2. Physicochemical", "Attribute": "Size Variants (Fragments)", 
+                "Method": "CE-SDS (Non-reduced)", "Tier": "Tier 1",
+                "Dev_Strategy": "Sample preparation temp/time (70°C 10min vs 3min) to prevent artificial fragmentation. Alkylation condition check."
+            },
+            {
+                "Category": "3. Biological Activity", "Attribute": "Binding Activity", 
+                "Method": "ELISA / SPR", "Tier": "Tier 1",
+                "Dev_Strategy": "Plate coating concentration optimization. Specificity test against other mAbs and blocking buffers."
+            },
+             {
+                "Category": "3. Biological Activity", "Attribute": "Potency (MoA)", 
+                "Method": "Cell-based Assay", "Tier": "Tier 2",
+                "Dev_Strategy": "Cell line sensitivity selection. Incubation time and cell density optimization. (Expect high variability, n=3 required)."
+            },
+        ]
+        return pd.DataFrame(data)
+    else:
+        return pd.DataFrame() 
+
+# ==========================================
+# 2. Document Generator (Report Structure Updated)
+# ==========================================
+def generate_ind_report(product_name, modality, phase, selected_methods):
     doc = Document()
     
-    # 기본 폰트 설정
+    # 스타일 설정
     style = doc.styles['Normal']
-    style.font.name = 'Malgun Gothic'
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
+    style.font.name = 'Arial'
     style.font.size = Pt(10)
 
-    # ----------------------------------------
-    # [1. 헤더 설정] 로고 및 Confidential 문구
-    # ----------------------------------------
-    section = doc.sections[0]
-    header = section.header
-    header_table = header.add_table(rows=1, cols=2, width=Inches(6))
-    header_table.autofit = False
-    header_table.columns[0].width = Inches(2.0)
-    header_table.columns[1].width = Inches(4.0)
-    
-    # 로고 (파일 있으면 넣고 없으면 텍스트)
-    ht_cell1 = header_table.cell(0, 0)
-    try:
-        ht_paragraph = ht_cell1.paragraphs[0]
-        run = ht_paragraph.add_run()
-        run.add_picture("logo.png", width=Inches(1.5)) 
-    except:
-        ht_cell1.text = "AtheraCLOUD"
-
-    # Confidential 문구
-    ht_cell2 = header_table.cell(0, 1)
-    ht_paragraph2 = ht_cell2.paragraphs[0]
-    ht_paragraph2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run2 = ht_paragraph2.add_run("CONFIDENTIAL\nGenerated by AtheraCLOUD")
-    run2.font.size = Pt(9)
-    
-    # ----------------------------------------
-    # [2. 본문 시작]
-    # ----------------------------------------
-    doc.add_paragraph("\n")
-    head = doc.add_heading(f'{product_name} SEC-HPLC Analysis Report', 0)
-    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # 헤더
+    doc.add_heading(f'Characterization Study Plan', 0)
+    doc.add_paragraph(f"Product: {product_name} ({modality})")
+    doc.add_paragraph(f"Target Phase: {phase}")
     doc.add_paragraph("-" * 70)
 
-    # 결재란 (Approval Box)
-    doc.add_heading('1. Approval', level=1)
-    approval_table = doc.add_table(rows=2, cols=3)
-    approval_table.style = 'Table Grid'
-    
-    headers = ["Prepared By", "Reviewed By", "Approved By"]
-    for i, text in enumerate(headers):
-        cell = approval_table.cell(0, i)
-        cell.text = text
-        cell.paragraphs[0].runs[0].bold = True
-        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    for i in range(3):
-        approval_table.cell(1, i).text = "\n\n(Signature)"
-        approval_table.cell(1, i).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # -------------------------------------------------------
+    # 1. Comprehensive Plan (종합 계획서) - 가장 먼저 배치
+    # -------------------------------------------------------
+    doc.add_heading('1. Comprehensive Characterization Plan', level=1)
+    doc.add_paragraph(f"The following test items have been established for the characterization of {product_name}.")
 
-    doc.add_paragraph("\n")
-
-    # 결과 요약
-    doc.add_heading('2. Result Summary', level=1)
-    table = doc.add_table(rows=1, cols=4)
+    table = doc.add_table(rows=1, cols=3)
     table.style = 'Table Grid'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'Peak Name'
-    hdr_cells[1].text = 'R.T. (min)'
-    hdr_cells[2].text = '% Area'
-    hdr_cells[3].text = 'Result'
+    headers = ['Category', 'Quality Attribute', 'Test Method']
     
-    for cell in hdr_cells:
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.bold = True
-    
-    for index, row in result_table.iterrows():
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(row['Peak Name'])
-        row_cells[1].text = str(row['Retention Time (min)'])
-        row_cells[2].text = str(row['% Area'])
-        row_cells[3].text = str(row['Result'])
+    # 테이블 헤더 스타일
+    for i, h in enumerate(headers):
+        cell = table.cell(0, i)
+        cell.text = h
+        cell.paragraphs[0].runs[0].bold = True
+        cell._element.tcPr.append(qn('w:shd', {'w:fill': 'E7E6E6'}))
 
-    # 크로마토그램
-    doc.add_heading('3. Chromatogram Data', level=1)
-    
-    plt.figure(figsize=(10, 5))
-    plt.plot(raw_data["Time (min)"], raw_data["Absorbance (mAU)"], color='#2c3e50', linewidth=1)
-    plt.title(f"{product_name} SEC-HPLC Profile")
-    plt.xlabel("Time (min)")
-    plt.ylabel("Absorbance (mAU)")
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.tight_layout()
-    
-    image_stream = io.BytesIO()
-    plt.savefig(image_stream, format='png', dpi=150)
-    plt.close()
-    image_stream.seek(0)
-    
-    doc.add_picture(image_stream, width=Inches(6.0))
+    # 테이블 내용 (Decision)
+    for idx, row in selected_methods.iterrows():
+        cells = table.add_row().cells
+        cells[0].text = str(row['Category'])
+        cells[1].text = str(row['Attribute'])
+        cells[2].text = str(row['Method'])
 
-    # 결론
-    doc.add_heading('4. Conclusion', level=1)
-    doc.add_paragraph("상기 시험 결과는 기준 규격(Specification)에 적합(Pass)함.")
-    doc.add_paragraph(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # -------------------------------------------------------
+    # 2. Method Decision Rationale (선정 근거)
+    # -------------------------------------------------------
+    doc.add_heading('2. Method Decision Rationale', level=1)
+    doc.add_paragraph("The selection of characterization methods is based on ICH Q6B guidelines and the specific critical quality attributes (CQAs) of the molecule.")
     
+    doc.add_paragraph("Rationale for Selection:", style='List Bullet')
+    for idx, row in selected_methods.iterrows():
+        p = doc.add_paragraph(style='List Bullet')
+        runner = p.add_run(f"{row['Attribute']}: ")
+        runner.bold = True
+        p.add_run(f"Selected {row['Method']} as the primary method for {row['Category']} assessment (ICH Tier {row['Tier']}).")
+
+    # -------------------------------------------------------
+    # 3. Method Development Strategy (개발 전략)
+    # -------------------------------------------------------
+    doc.add_heading('3. Method Development Strategy', level=1)
+    doc.add_paragraph("The following development strategies will be applied to optimize method performance:")
+    
+    for idx, row in selected_methods.iterrows():
+        p = doc.add_paragraph()
+        runner = p.add_run(f"[{row['Method']}] Development:")
+        runner.bold = True
+        doc.add_paragraph(f"   ► Strategy: {row['Dev_Strategy']}")
+        doc.add_paragraph("") 
+
+    # 저장
     bio = io.BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio
 
 # ==========================================
-# 3. 메인 앱 실행 (Main App)
+# 3. UI Implementation
 # ==========================================
 def main():
-    st.set_page_config(page_title="AtheraCLOUD - Characterization", layout="wide")
-
-    st.title("🧬 AtheraCLOUD: Characterization Suite")
+    st.set_page_config(page_title="Characterization Engine", layout="wide")
     
     with st.sidebar:
-        st.header("Project Info")
-        product_name = st.text_input("Product Name", value="Athera-mAb-001")
-        phase = st.selectbox("Phase", ["Phase 1", "Phase 3"])
-
-    tab1, tab2 = st.tabs(["📑 Study Plan Design", "📈 Analysis Lab (Beta)"])
-
-    # --- TAB 1: 계획서 설계 ---
-    with tab1:
-        st.subheader(f"Characterization Plan for {product_name}")
-        df = get_mab_characterization_data(phase)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.title("🧬 AtheraCLOUD")
+        st.subheader("Project Info")
         
-        doc = generate_word_report(df, product_name, phase)
-        
-        st.download_button(
-            label="📄 종합계획서 다운로드 (Word)",
-            data=doc,
-            file_name=f"{product_name}_Plan.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        modality = st.selectbox(
+            "Modality", 
+            ["Monoclonal Antibody (mAb)", "ADC (Coming Soon)", "Bispecific Ab (Coming Soon)"]
         )
+        product_name = st.text_input("Product Name", "Athera-mAb-001")
+        phase = st.selectbox("Phase", ["Pre-clinical", "Phase 1", "Phase 3", "BLA"])
 
-    # --- TAB 2: 데이터 분석 ---
+    st.markdown(f"## 🧪 {modality} Characterization Engine")
+    st.markdown("**Process Flow:** Plan Overview ➔ Method Decision ➔ Development Strategy")
+
+    if "Coming Soon" in modality:
+        st.warning(f"🚧 {modality} module is under development.")
+        return
+
+    # 데이터 로드
+    df_db = get_method_database(modality)
+
+    # 탭 순서 재배치 (Plan -> Decision -> Development)
+    tab1, tab2, tab3 = st.tabs(["1️⃣ Comprehensive Plan (Output)", "2️⃣ Method Decision (Select)", "3️⃣ Method Development (Guide)"])
+
+    # ------------------------------------------------------------------
+    # 중요: Streamlit의 실행 순서상, 'Method Decision'(Tab2)의 입력값을
+    # 'Comprehensive Plan'(Tab1)에서 보여주려면
+    # 코드 상에서는 Tab 2 로직을 먼저 처리해야 합니다.
+    # ------------------------------------------------------------------
+
+    # --- [Logic for Tab 2] Method Decision (Selection) ---
     with tab2:
-        st.subheader("🧪 Data Analysis Lab")
-        st.markdown("Raw Data(CSV/Excel)를 업로드하여 분석 리포트를 생성합니다.")
+        st.subheader("Method Decision (Test Item Selection)")
+        st.markdown("Select test items based on ICH Q6B CQAs.")
         
-        col1, col2 = st.columns([1, 2])
+        df_db['Include'] = True 
+        edited_df = st.data_editor(
+            df_db[['Include', 'Category', 'Attribute', 'Method', 'Tier']],
+            column_config={
+                "Include": st.column_config.CheckboxColumn("Select", help="Include in Plan?"),
+                "Tier": st.column_config.TextColumn("Tier", help="Tier 1: Mandatory"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+        selected_rows = edited_df[edited_df['Include'] == True]
+
+    # --- [Logic for Tab 1] Comprehensive Plan (Output) ---
+    with tab1:
+        st.subheader("Comprehensive Characterization Plan")
+        st.markdown("Based on your selection in Tab 2, here is the final plan.")
         
-        with col1:
-            st.info("📂 1. 데이터 입력")
-            analysis_type = st.selectbox("분석 항목", ["SEC-HPLC (Size Variants)"])
-            uploaded_file = st.file_uploader("Upload Data (.csv)", type=["csv"])
+        if len(selected_rows) > 0:
+            # 결과 미리보기 (깔끔한 테이블)
+            st.dataframe(
+                selected_rows[['Category', 'Attribute', 'Method']], 
+                use_container_width=True,
+                hide_index=True
+            )
             
-            if st.button("🧪 체험용 데모 데이터 생성"):
-                st.session_state['sec_data'] = generate_demo_sec_data()
-                st.success("데이터 로드 완료!")
+            # 리포트 생성 준비
+            final_selection = pd.merge(selected_rows, df_db, on=['Category', 'Attribute', 'Method', 'Tier'], how='left')
+            # merge시 중복 컬럼 처리
+            if 'Dev_Strategy_y' in final_selection.columns:
+                 final_selection['Dev_Strategy'] = final_selection['Dev_Strategy_y']
 
-        with col2:
-            st.info("📊 2. 분석 결과 확인")
+            doc_file = generate_ind_report(product_name, modality, phase, final_selection)
             
-            data = None
-            if uploaded_file:
-                data = pd.read_csv(uploaded_file)
-            elif 'sec_data' in st.session_state:
-                data = st.session_state['sec_data']
-            
-            if data is not None:
-                # 그래프 표시
-                fig = px.line(data, x="Time (min)", y="Absorbance (mAU)", title=f"{product_name} - SEC Profile")
-                fig.update_layout(height=350, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 결과 테이블 (데모용)
-                res_df = pd.DataFrame({
-                    "Peak Name": ["HMW (Aggregate)", "Main Peak (Monomer)", "LMW (Fragment)"],
-                    "Retention Time (min)": [8.5, 10.0, 12.0],
-                    "% Area": ["1.8%", "97.2%", "1.0%"],
-                    "Result": ["Pass", "Pass", "Pass"]
-                })
-                st.table(res_df)
-                
-                st.markdown("---")
-                st.markdown("### 📥 Report Generation")
-                
-                # [여기가 핵심] 브랜딩된 리포트 생성 함수 호출
-                report_file = generate_analysis_report(data, res_df, product_name)
-                
-                st.download_button(
-                    label="📄 결과 보고서 다운로드 (Word)",
-                    data=report_file,
-                    file_name=f"{product_name}_SEC_Report_Signed.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key='download_report'
-                )
-            else:
-                st.warning("왼쪽에서 데이터를 업로드하거나 데모 데이터를 생성해주세요.")
+            st.success("The comprehensive plan is ready.")
+            st.download_button(
+                label="📄 Download Comprehensive Plan (.docx)",
+                data=doc_file,
+                file_name=f"{product_name}_Characterization_Plan.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        else:
+            st.warning("Please select at least one method in 'Method Decision' tab.")
 
-# ==========================================
-# 4. 실행 명령 (Entry Point) - 이게 없으면 화면이 안 나옴!
-# ==========================================
+    # --- [Logic for Tab 3] Method Development ---
+    with tab3:
+        st.subheader("Method Development Strategy")
+        st.markdown("Technical guidelines for the selected methods.")
+        
+        if len(selected_rows) > 0:
+            final_selection = pd.merge(selected_rows, df_db, on=['Category', 'Attribute', 'Method', 'Tier'], how='left')
+            
+            for index, row in final_selection.iterrows():
+                strategy_text = row.get('Dev_Strategy_y', row.get('Dev_Strategy', ''))
+                with st.expander(f"📌 {row['Attribute']} - {row['Method']}"):
+                    st.write(f"**Tier:** {row['Tier']}")
+                    st.info(f"**Optimization Strategy:**\n\n{strategy_text}")
+        else:
+            st.info("Select methods in Tab 2 to see development strategies.")
+
 if __name__ == "__main__":
     main()

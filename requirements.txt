@@ -2,7 +2,6 @@ streamlit
 pandas
 numpy
 openpyxl
-xlsxwriter
 python-docx
 plotly
 matplotlib
