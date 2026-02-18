@@ -80,96 +80,36 @@ def set_cell_background(cell, color_hex):
     shd.set(qn('w:fill'), color_hex)
     cell._element.get_or_add_tcPr().append(shd)
 
-def generate_report(product_name, modality, phase, selected_methods, lang):
+def generate_plan_report(product_name, phase, selected_df, lang):
     doc = Document()
+    font_name = 'Malgun Gothic' if lang == "KR" else 'Arial'
     style = doc.styles['Normal']
-    
-    # 언어별 텍스트 설정
-    if lang == "KR":
-        font_name = 'Malgun Gothic'
-        title_text = f'{product_name} 특성분석 종합 계획서'
-        labels = {"Prod": "제품명", "Mod": "모달리티", "Phase": "단계", "Date": "날짜"}
-        headers = ['구분', '품질 속성', '시험 방법', '중요도']
-        sec1_title = '1. 특성분석 종합 계획'
-        sec1_desc = f"본 문서는 {product_name}의 {phase} 승인을 위한 시험 항목을 정의합니다."
-        sec2_title = '2. 시험법 선정 근거'
-        sec2_desc = "ICH Q6B 가이드라인 및 CQA 평가에 기반하여 선정됨."
-        sec3_title = '3. 개발 전략'
-        sec3_desc = "시험법 최적화를 위한 전략:"
-        sign_text = "작성자: ___________________  승인자: ___________________"
-    else:
-        font_name = 'Arial'
-        title_text = f'{product_name} Characterization Plan'
-        labels = {"Prod": "Product", "Mod": "Modality", "Phase": "Phase", "Date": "Date"}
-        headers = ['Category', 'Attribute', 'Method', 'Tier']
-        sec1_title = '1. Comprehensive Characterization Plan'
-        sec1_desc = f"This document defines the characterization items for {product_name} ({phase})."
-        sec2_title = '2. Rationale for Selection'
-        sec2_desc = "Selected based on ICH Q6B guidelines and CQA assessment."
-        sec3_title = '3. Development Strategy'
-        sec3_desc = "Strategies for method optimization:"
-        sign_text = "Prepared by: ___________________  Approved by: ___________________"
-
-    # 폰트 적용
     style.font.name = font_name
-    if lang == "KR":
-        style._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
-    style.font.size = Pt(10)
-
-    # 타이틀
-    title = doc.add_heading(title_text, 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph("")
+    if lang == "KR": style._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
     
-    # 정보 테이블
-    table_info = doc.add_table(rows=3, cols=2)
-    table_info.style = 'Table Grid'
-    info_rows = [
-        (labels["Prod"], product_name),
-        (labels["Mod"], modality),
-        (labels["Phase"], phase)
-    ]
-    for i, (l, v) in enumerate(info_rows):
-        table_info.rows[i].cells[0].text = l
-        table_info.rows[i].cells[1].text = v
-        set_cell_background(table_info.rows[i].cells[0], 'F2F2F2')
-
-    doc.add_paragraph("")
-
-    # Section 1
-    doc.add_heading(sec1_title, level=1)
-    doc.add_paragraph(sec1_desc)
+    title = "의약품 특성분석 종합 계획서" if lang == "KR" else "Comprehensive Characterization Plan"
+    doc.add_heading(title, 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    table = doc.add_table(rows=1, cols=4)
-    table.style = 'Table Grid'
+    doc.add_heading("1. 개요 (Project Overview)", level=1)
+    doc.add_paragraph(f"제품명: {product_name} / 개발 단계: {phase}")
+
+    doc.add_heading("2. 시험 항목 및 선정 근거 (Test Items & Rationale)", level=1)
+    table = doc.add_table(rows=1, cols=4, style='Table Grid')
+    headers = ["Category", "Attribute", "Method", "Rationale"]
     for i, h in enumerate(headers):
         cell = table.cell(0, i)
         cell.text = h
-        cell.paragraphs[0].runs[0].bold = True
         set_cell_background(cell, 'E7E6E6')
 
-    for idx, row in selected_methods.iterrows():
+    for _, row in selected_df.iterrows():
         cells = table.add_row().cells
-        cells[0].text = str(row['Category'])
-        cells[1].text = str(row['Attribute'])
-        cells[2].text = str(row['Method'])
-        cells[3].text = str(row['Tier'])
+        cells[0].text, cells[1].text, cells[2].text, cells[3].text = row['Category'], row['Attribute'], row['Method'], row['Rationale']
 
-    doc.add_paragraph("")
-
-    # Section 2 & 3
-    doc.add_heading(sec2_title, level=1)
-    doc.add_paragraph(sec2_desc)
-    
-    doc.add_heading(sec3_title, level=1)
-    doc.add_paragraph(sec3_desc)
-    for idx, row in selected_methods.iterrows():
-        p = doc.add_paragraph(style="List Bullet")
-        runner = p.add_run(f"[{row['Method']}] : {row['Dev_Strategy']}")
-        runner.bold = False
-
-    doc.add_paragraph("-" * 70)
-    doc.add_paragraph(sign_text)
+    doc.add_heading("3. 개발 전략 (Development Strategy)", level=1)
+    for _, row in selected_df.iterrows():
+        p = doc.add_paragraph(style='List Bullet')
+        p.add_run(f"{row['Method']}: ").bold = True
+        p.add_run(row['Dev_Strategy'])
 
     bio = io.BytesIO()
     doc.save(bio)
@@ -180,117 +120,59 @@ def generate_report(product_name, modality, phase, selected_methods, lang):
 # 3. 메인 UI (Streamlit - Dual)
 # ==========================================
 def main():
-    st.set_page_config(page_title="AtheraCLOUD Characterization", layout="wide")
+    st.set_page_config(page_title="AtheraCLOUD - Characterization", layout="wide")
     
     with st.sidebar:
         st.title("🧬 AtheraCLOUD")
-        
-        # [핵심 기능] 언어 선택 스위치
-        lang = st.radio("Language / 언어", ["Korean (국문)", "English (영문)"])
+        lang = st.radio("Language Select / 언어 선택", ["Korean (국문)", "English (영문)"])
         lang_code = "KR" if "Korean" in lang else "EN"
+        product_name = st.text_input("제품명 (Product Name)", "Athera-mAb-001")
+        phase = st.selectbox("개발 단계 (Phase)", ["비임상", "임상 1상", "임상 3상", "BLA"])
 
-        st.markdown("---")
-        
-        # 사이드바 라벨도 언어에 따라 변경
-        if lang_code == "KR":
-            st.subheader("프로젝트 설정")
-            modality = st.selectbox("모달리티", ["Monoclonal Antibody (mAb)", "ADC (준비중)"])
-            product_name = st.text_input("제품명", "Athera-mAb-001")
-            phase = st.selectbox("개발 단계", ["비임상", "임상 1상", "임상 3상", "BLA"])
-        else:
-            st.subheader("Project Settings")
-            modality = st.selectbox("Modality", ["Monoclonal Antibody (mAb)", "ADC (Coming Soon)"])
-            product_name = st.text_input("Product Name", "Athera-mAb-001")
-            phase = st.selectbox("Phase", ["Pre-clinical", "Phase 1", "Phase 3", "BLA"])
+    st.header(f"🧪 {lang_code} 특성분석 엔진 (Characterization Engine)")
+    st.info("노션 마스터 블루프린트 로직 기반 종합 계획서 생성 시스템")
 
-    # 메인 타이틀
-    if lang_code == "KR":
-        st.markdown(f"## 🧪 {modality} 특성분석 엔진")
-        st.markdown("**진행 순서:** 1.항목선정 ➔ 2.개발전략 ➔ 3.리포트")
-        tab_names = ["1️⃣ 항목 선정 (Decision)", "2️⃣ 개발 전략 (Guide)", "3️⃣ 리포트 (Report)"]
-    else:
-        st.markdown(f"## 🧪 {modality} Characterization Engine")
-        st.markdown("**Process:** 1.Decision ➔ 2.Strategy ➔ 3.Report")
-        tab_names = ["1️⃣ Decision", "2️⃣ Strategy", "3️⃣ Report"]
-
-    # 데이터 로드 (언어 선택 적용)
-    df_db = get_method_database("Monoclonal Antibody (mAb)", lang_code)
+    db = get_notion_master_db(lang_code)
+    df = pd.DataFrame(db)
+    df['Include'] = True
     
-    tab1, tab2, tab3 = st.tabs(tab_names)
+    # 탭 순서: 종합계획서가 가장 먼저 나오도록 배치
+    tab1, tab2, tab3 = st.tabs(["📋 종합계획서 (Summary Plan)", "🔬 시험항목 선정 (Decision)", "💡 개발 가이드 (Strategy)"])
 
-    # --- Tab 1: Decision ---
-    with tab1:
-        if lang_code == "KR":
-            st.subheader("시험 항목 선정")
-            st.markdown("프로젝트에 필요한 분석 항목을 체크하세요.")
-            col_config = {
-                "Include": st.column_config.CheckboxColumn("선택"),
-                "Category": st.column_config.TextColumn("분류"),
-                "Attribute": st.column_config.TextColumn("품질 속성"),
-                "Method": st.column_config.TextColumn("시험법"),
-                "Tier": st.column_config.TextColumn("중요도")
-            }
-        else:
-            st.subheader("Method Selection")
-            st.markdown("Select analysis items for your project.")
-            col_config = {
-                "Include": st.column_config.CheckboxColumn("Select"),
-                "Category": st.column_config.TextColumn("Category"),
-                "Attribute": st.column_config.TextColumn("Attribute"),
-                "Method": st.column_config.TextColumn("Method"),
-                "Tier": st.column_config.TextColumn("Tier")
-            }
-
-        df_db['Include'] = True
-        edited_df = st.data_editor(
-            df_db[['Include', 'Category', 'Attribute', 'Method', 'Tier']],
-            column_config=col_config,
-            use_container_width=True,
-            hide_index=True
-        )
+    # 로직 상 Decision 탭의 데이터를 먼저 정의해야 함
+    with tab2:
+        st.subheader("시험 항목 선정 (Method Decision)")
+        edited_df = st.data_editor(df[['Include', 'Category', 'Attribute', 'Method', 'Rationale']], use_container_width=True, hide_index=True)
         selected_rows = edited_df[edited_df['Include'] == True]
 
-    # --- Tab 2: Strategy ---
-    with tab2:
-        if lang_code == "KR":
-            st.subheader("시험법 개발 전략")
-        else:
-            st.subheader("Development Strategy")
-
-        if len(selected_rows) > 0:
-            final_selection = pd.merge(selected_rows, df_db, on=['Category', 'Attribute', 'Method', 'Tier'], how='left')
-            for index, row in final_selection.iterrows():
-                strategy = row.get('Dev_Strategy_y', row.get('Dev_Strategy', ''))
-                with st.expander(f"📌 {row['Attribute']} - {row['Method']}"):
-                    st.info(strategy)
-        else:
-            st.warning("Please select items in Tab 1.")
-
-    # --- Tab 3: Report ---
-    with tab3:
-        if lang_code == "KR":
-            st.subheader("종합계획서 생성")
-            btn_label = "📄 국문 리포트 다운로드 (.docx)"
-            file_suffix = "_KR.docx"
-        else:
-            st.subheader("Generate Report")
-            btn_label = "📄 Download English Report (.docx)"
-            file_suffix = "_EN.docx"
-
-        if len(selected_rows) > 0:
-            final_selection = pd.merge(selected_rows, df_db, on=['Category', 'Attribute', 'Method', 'Tier'], how='left')
-            if 'Dev_Strategy_y' in final_selection.columns:
-                 final_selection['Dev_Strategy'] = final_selection['Dev_Strategy_y']
-
-            doc_file = generate_report(product_name, modality, phase, final_selection, lang_code)
-            
+    with tab1:
+        st.subheader("종합계획서 미리보기 (Master Plan Preview)")
+        if not selected_rows.empty:
             st.dataframe(selected_rows[['Category', 'Attribute', 'Method']], use_container_width=True, hide_index=True)
+            
+            # 리포트 생성
+            final_df = pd.merge(selected_rows, df, on=['Category', 'Attribute', 'Method', 'Rationale'])
+            doc = generate_plan_report(product_name, phase, final_df, lang_code)
+            
+            st.success("종합 계획서 생성이 완료되었습니다.")
             st.download_button(
-                label=btn_label,
-                data=doc_file,
-                file_name=f"{product_name}_Characterization_Plan{file_suffix}",
+                label=f"📥 {lang_code} 종합계획서 다운로드 (.docx)",
+                data=doc,
+                file_name=f"Characterization_Plan_{lang_code}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
+        else:
+            st.warning("선택 탭에서 시험 항목을 하나 이상 선택해주세요.")
+
+    with tab3:
+        st.subheader("상세 개발 가이드 (Development Guide)")
+        if not selected_rows.empty:
+            final_df = pd.merge(selected_rows, df, on=['Category', 'Attribute', 'Method', 'Rationale'])
+            for _, row in final_df.iterrows():
+                with st.expander(f"📌 {row['Attribute']} - {row['Method']}"):
+                    st.success(f"Strategy: {row['Dev_Strategy_y']}")
+        else:
+            st.warning("선택 탭에서 항목을 선택하면 가이드가 표시됩니다.")
 
 if __name__ == "__main__":
     main()
