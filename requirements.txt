@@ -1,7 +1,6 @@
 streamlit
 pandas
-numpy
-openpyxl
+requests
 python-docx
-plotly
-matplotlib
+openpyxl
+XlsxWriter
