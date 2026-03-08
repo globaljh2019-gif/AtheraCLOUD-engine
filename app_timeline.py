@@ -5,14 +5,15 @@ import xlsxwriter
 from io import BytesIO
 from datetime import datetime, timedelta
 
+# --- 페이지 설정 ---
 st.set_page_config(page_title="AtheraCLOUD Operation Planner", layout="wide")
 
-# 1. Notion API 설정 (Secrets에서 호출)
+# 1. Notion API 설정
 try:
     NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
     DATABASE_ID = st.secrets["NOTION_DB_ID"]
 except Exception:
-    st.error("⚠️ Streamlit Cloud의 Secrets 설정에 NOTION_TOKEN과 NOTION_DB_ID를 입력해주세요.")
+    st.error("⚠️ Secrets 설정에서 NOTION_TOKEN과 NOTION_DB_ID를 확인하세요.")
     st.stop()
 
 # 2. 데이터 호출 함수
@@ -26,7 +27,6 @@ def fetch_notion_data(database_id, token):
     }
     response = requests.post(url, headers=headers)
     if response.status_code != 200: return pd.DataFrame()
-    
     results = response.json().get("results", [])
     data = []
     for page in results:
@@ -42,82 +42,84 @@ def fetch_notion_data(database_id, token):
         data.append(row)
     return pd.DataFrame(data)
 
-# --- 메인 대시보드 UI ---
-st.title("📊 Tool 2: CMC Operation & Timeline Planner")
-st.markdown("노션 DB 기반 실무 운영 계획 및 엑셀 타임라인 생성기입니다.")
-
-# 사이드바 설정 영역
+# --- UI 및 일정 설정 ---
+st.title("📊 Tool 2: CMC Operation & Gantt Planner")
 st.sidebar.header("📅 Timeline Strategy")
-base_date = st.sidebar.date_input("프로젝트 착수일", datetime(2026, 3, 1))
-target_ind = st.sidebar.date_input("IND 신청 목표일", datetime(2026, 12, 31))
+base_date = st.sidebar.date_input("프로젝트 시작일", datetime(2026, 3, 1))
 
-# 데이터 로드
 df = fetch_notion_data(DATABASE_ID, NOTION_TOKEN)
 
 if not df.empty:
-    st.success("🟢 실시간 노션 데이터 로드 완료")
-    
-    # 엑셀 생성을 위한 데이터 가공 (Method Category 컬럼 활용)
+    st.success("🟢 실시간 노션 데이터 기반 간트 차트 생성 준비 완료")
     cat_col = "Method Category" if "Method Category" in df.columns else "Category"
-    
-    # 화면에 미리보기 출력
-    st.subheader("📋 분석법별 일정 계획 미리보기")
-    view_df = df[[cat_col, "Method", "Stability-indicating", "Typical Purpose"]].copy()
-    st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-    # --- 엑셀 생성 함수 ---
-    def generate_excel_planner(dataframe, start_date, category_col):
+    # --- 간트 차트 엑셀 생성 함수 ---
+    def generate_gantt_excel(dataframe, start_date, category_col):
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output)
-        sheet = workbook.add_worksheet('CMC_Master_Timeline')
+        sheet = workbook.add_worksheet('Gantt_Chart')
         
-        # 엑셀 스타일 정의
-        bold_blue = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1, 'align': 'center'})
-        date_fmt = workbook.add_format({'num_format': 'yyyy-mm-dd', 'border': 1, 'align': 'center'})
-        text_fmt = workbook.add_format({'border': 1})
-        highlight_fmt = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1, 'align': 'center'})
+        # 스타일 정의
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        date_header_fmt = workbook.add_format({'bg_color': '#D9EAD3', 'border': 1, 'align': 'center', 'font_size': 9})
+        dev_bar_fmt = workbook.add_format({'bg_color': '#5B9BD5', 'border': 1}) # 개발 (파랑)
+        qual_bar_fmt = workbook.add_format({'bg_color': '#ED7D31', 'border': 1}) # 적격성 (주황)
+        stab_bar_fmt = workbook.add_format({'bg_color': '#70AD47', 'border': 1}) # 안정성 (초록)
 
-        # 헤더 섹션
-        headers = ['Category', 'Method', 'Dev Start', 'Dev End (6w)', 'Qual End (+4w)', 'Stability Study']
-        for col, head in enumerate(headers):
-            sheet.write(0, col, head, bold_blue)
-            sheet.set_column(col, col, 18)
+        # 1. 왼쪽 데이터 영역 헤더
+        cols = ['Category', 'Method', 'Phase']
+        for c, name in enumerate(cols):
+            sheet.write(0, c, name, header_fmt)
+            sheet.set_column(c, c, 15)
 
-        # 행 데이터 작성
-        for i, (_, row) in enumerate(dataframe.iterrows(), start=1):
-            d_start = datetime.combine(start_date, datetime.min.time())
-            d_end = d_start + timedelta(weeks=6)
-            q_end = d_end + timedelta(weeks=4)
+        # 2. 오른쪽 날짜 영역 헤더 (주 단위 표시)
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        for week in range(40): # 약 10개월치 타임라인 표시
+            current_week_dt = start_dt + timedelta(weeks=week)
+            sheet.write(0, 3 + week, current_week_dt.strftime('%m/%d'), date_header_fmt)
+            sheet.set_column(3 + week, 3 + week, 5)
+
+        # 3. 데이터 및 바(Bar) 생성
+        current_row = 1
+        for _, row in dataframe.iterrows():
+            # 각 시험법마다 3개 행(Dev, Qual, Stab) 생성하여 간트 시각화
+            m_name = str(row['Method'])
+            m_cat = str(row[category_col])
             
-            sheet.write(i, 0, str(row[category_col]), text_fmt)
-            sheet.write(i, 1, str(row['Method']), text_fmt)
-            sheet.write(i, 2, d_start, date_fmt)
-            sheet.write(i, 3, d_end, date_fmt)
-            sheet.write(i, 4, q_end, date_fmt)
-            
-            # 안정성 시험 여부 판단
+            # --- Method Development ---
+            sheet.write(current_row, 0, m_cat)
+            sheet.write(current_row, 1, m_name)
+            sheet.write(current_row, 2, 'Development')
+            # 1~6주차 색칠
+            for w in range(0, 6): sheet.write(current_row, 3 + w, "", dev_bar_fmt)
+            current_row += 1
+
+            # --- Method Qualification ---
+            sheet.write(current_row, 2, 'Qualification')
+            # 7~10주차 색칠
+            for w in range(6, 10): sheet.write(current_row, 3 + w, "", qual_bar_fmt)
+            current_row += 1
+
+            # --- Stability (필요 시) ---
             if str(row['Stability-indicating']).lower() in ['yes', 'partial']:
-                sheet.write(i, 5, "Targeted (Start at Qual End)", highlight_fmt)
-            else:
-                sheet.write(i, 5, "N/A", text_fmt)
+                sheet.write(current_row, 2, 'Stability Study')
+                # 11주차부터 끝까지 색칠
+                for w in range(10, 40): sheet.write(current_row, 3 + w, "", stab_bar_fmt)
+                current_row += 1
+            
+            # 구분선(빈 행)
+            current_row += 1
 
         workbook.close()
         return output.getvalue()
 
-    # 다운로드 버튼
-    st.markdown("---")
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        if st.button("🚀 엑셀 플래너 생성"):
-            excel_bin = generate_excel_planner(df, base_date, cat_col)
-            st.download_button(
-                label="📥 엑셀 파일 다운로드",
-                data=excel_bin,
-                file_name=f"CMC_Timeline_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    with col2:
-        st.info("버튼을 누르면 각 시험법의 표준 리드타임(개발 6주, 적격성 4주)이 적용된 마스터 플랜이 생성됩니다.")
-
+    if st.button("🚀 간트 차트 엑셀 다운로드"):
+        excel_bin = generate_gantt_excel(df, base_date, cat_col)
+        st.download_button(
+            label="📥 파일 저장",
+            data=excel_bin,
+            file_name=f"CMC_Gantt_{datetime.now().strftime('%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 else:
-    st.warning("노션에서 데이터를 불러올 수 없습니다. API 설정을 확인하세요.")
+    st.warning("노션 데이터를 불러올 수 없습니다.")
