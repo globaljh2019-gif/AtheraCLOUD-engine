@@ -5,17 +5,7 @@ import xlsxwriter
 from io import BytesIO
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="AtheraCLOUD Milestone Planner", layout="wide")
-
-# 1. Notion API 설정
-try:
-    NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
-    DATABASE_ID = st.secrets["NOTION_DB_ID"]
-except Exception:
-    st.error("⚠️ Secrets 설정에서 NOTION_TOKEN과 NOTION_DB_ID를 확인하세요.")
-    st.stop()
-
-# 2. 데이터 호출 함수
+# --- 1. Notion API 및 데이터 호출 (기존 로직 유지) ---
 @st.cache_data(ttl=60)
 def fetch_notion_data(database_id, token):
     url = f"https://api.notion.com/v1/databases/{database_id}/query"
@@ -41,98 +31,87 @@ def fetch_notion_data(database_id, token):
         data.append(row)
     return pd.DataFrame(data)
 
-# --- 🎯 마일스톤 전략 설정 UI ---
-st.title("🚀 Tool 2: Strategic CMC Milestone Planner")
-st.sidebar.header("📋 Project Strategy")
+# --- 2. UI 설정 및 전략 파라미터 ---
+st.title("🎯 Tool 2: Strategic CMC Master Scheduler")
+st.sidebar.header("🗓️ Project Milestones")
 
-# 개발 단계 및 물질 선택
-substance_type = st.sidebar.selectbox("물질 유형 (Substance Type)", ["원료의약품 (DS)", "완제의약품 (DP)"])
-dev_stage = st.sidebar.selectbox("개발 단계 (Phase)", ["Pre-IND / Phase 1", "Phase 2", "Phase 3 / NDA"])
-base_date = st.sidebar.date_input("CMC 프로젝트 착수일", datetime(2026, 3, 1))
+dev_stage = st.sidebar.selectbox("임상 단계", ["Phase 1 (IND)", "Phase 2", "Phase 3 (BLA)"])
+base_date = st.sidebar.date_input("CMC 공식 착수일", datetime(2026, 3, 1))
+prod_date = st.sidebar.date_input("임상 시료 생산 예정일 (Clinical Batch)", datetime(2026, 8, 1))
 
-# 단계별 마일스톤 가중치/기간 설정 (예시)
-if dev_stage == "Pre-IND / Phase 1":
-    dev_weeks = 8
-    val_weeks = 4
-    stab_months = 6
-elif dev_stage == "Phase 2":
-    dev_weeks = 12
-    val_weeks = 8
-    stab_months = 12
-else:
-    dev_weeks = 16
-    val_weeks = 12
-    stab_months = 24
-
-df = fetch_notion_data(DATABASE_ID, NOTION_TOKEN)
+# 노션 데이터 로드
+try:
+    df = fetch_notion_data(st.secrets["NOTION_DB_ID"], st.secrets["NOTION_TOKEN"])
+except:
+    st.error("Secrets 설정을 확인해주세요.")
+    st.stop()
 
 if not df.empty:
-    st.success(f"🟢 {substance_type} - {dev_stage} 맞춤형 로드맵 생성 준비 완료")
-    cat_col = "Method Category" if "Method Category" in df.columns else "Category"
-
-    # --- 마일스톤 간트 차트 생성 ---
-    def generate_strategic_gantt(dataframe, start_date, stage, substance):
+    st.success(f"🟢 {dev_stage} 맞춤형 마일스톤 연동 완료")
+    
+    def generate_master_gantt(dataframe, start_date, clinical_prod_date, stage):
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output)
-        sheet = workbook.add_worksheet('CMC_Strategic_Roadmap')
+        sheet = workbook.add_worksheet('CMC_Master_Roadmap')
         
-        # 스타일
-        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1, 'align': 'center'})
-        milestone_fmt = workbook.add_format({'bg_color': '#FFD966', 'bold': True, 'border': 1, 'align': 'center'})
-        dev_fmt = workbook.add_format({'bg_color': '#DEEAF6', 'border': 1})
-        val_fmt = workbook.add_format({'bg_color': '#FBE5D6', 'border': 1})
-        stab_fmt = workbook.add_format({'bg_color': '#E2EFDA', 'border': 1})
-        comparability_fmt = workbook.add_format({'bg_color': '#E1CBFF', 'border': 1}) # 동등성 평가 (보라)
-
-        # 헤더
-        cols = ['Category', 'Activity / Milestone', 'Phase']
-        for c, name in enumerate(cols):
-            sheet.write(0, c, name, header_fmt)
+        # 스타일 정의
+        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        fmt_milestone = workbook.add_format({'bg_color': '#FFD966', 'bold': True, 'border': 1, 'align': 'center'}) # 마일스톤 (황금색)
+        fmt_prod = workbook.add_format({'bg_color': '#C6E0B4', 'bold': True, 'border': 1, 'align': 'center'}) # 생산 (연두색)
+        fmt_dev = workbook.add_format({'bg_color': '#DEEAF6', 'border': 1}) # 개발
+        fmt_val = workbook.add_format({'bg_color': '#FBE5D6', 'border': 1}) # 검증
+        fmt_stab = workbook.add_format({'bg_color': '#E2EFDA', 'border': 1}) # 안정성
+        
+        # 1. 헤더 구성
+        headers = ['Category', 'Key Activities & Milestones', 'Dependency']
+        for c, h in enumerate(headers):
+            sheet.write(0, c, h, fmt_header)
+            sheet.set_column(c, c, 20)
         
         start_dt = datetime.combine(start_date, datetime.min.time())
-        for w in range(52): # 1년치 주차 표시
-            sheet.write(0, 3 + w, (start_dt + timedelta(weeks=w)).strftime('%y-%m-%d'), header_fmt)
-            sheet.set_column(3 + w, 3 + w, 3)
+        for w in range(52): # 1년치 주차
+            sheet.write(0, 3 + w, (start_dt + timedelta(weeks=w)).strftime('%m/%d'), fmt_header)
+            sheet.set_column(3 + w, 3 + w, 4)
 
-        row_idx = 1
-        # [공통 마일스톤: 동등성 평가]
-        sheet.write(row_idx, 0, "Common")
-        sheet.write(row_idx, 1, "동등성 평가 (Comparability Study)")
-        sheet.write(row_idx, 2, "Critical")
-        for w in range(4, 8): sheet.write(row_idx, 3 + w, "", comparability_fmt)
-        row_idx += 2
+        row = 1
+        # --- [SECTION 1: Project Management Milestones] ---
+        # 1.1 S&P 설정 (모든 분석법 개발 완료 시점 연동)
+        sheet.write(row, 1, "★ Milestone: 기준 및 시험방법(S&P) 설정 완료", fmt_milestone)
+        for w in range(10, 12): sheet.write(row, 3 + w, "DONE", fmt_milestone)
+        row += 1
+        
+        # 1.2 임상 시료 생산 (사용자 입력 날짜 연동)
+        prod_week = int((datetime.combine(clinical_prod_date, datetime.min.time()) - start_dt).days / 7)
+        sheet.write(row, 1, "🏭 Clinical Batch Production (Phase Material)", fmt_prod)
+        sheet.write(row, 3 + prod_week, "PROD", fmt_prod)
+        row += 2
 
-        # [분석법별 세부 마일스톤]
-        for _, row in dataframe.iterrows():
-            m_name = row['Method']
-            # 1. 시험법 개발 (Method Development)
-            sheet.write(row_idx, 0, row[cat_col])
-            sheet.write(row_idx, 1, f"{m_name} 개발")
-            for w in range(0, dev_weeks): sheet.write(row_idx, 3 + w, "", dev_fmt)
-            row_idx += 1
-
-            # 2. 시험법 검증/동등성 (Qualification/Validation)
-            sheet.write(row_idx, 1, f"{m_name} 검증")
-            for w in range(dev_weeks, dev_weeks + val_weeks): sheet.write(row_idx, 3 + w, "", val_fmt)
-            row_idx += 1
-
-            # 3. 안정성 시험 (Stability)
-            if str(row['Stability-indicating']).lower() in ['yes', 'partial']:
-                sheet.write(row_idx, 1, f"{m_name} 안정성 시험")
-                for w in range(dev_weeks + val_weeks, dev_weeks + val_weeks + (stab_months * 4)):
-                    if w < 52: sheet.write(row_idx, 3 + w, "", stab_fmt)
-                row_idx += 1
+        # --- [SECTION 2: Analytical Methods & Stability] ---
+        cat_col = "Method Category" if "Method Category" in df.columns else "Category"
+        for _, item in dataframe.iterrows():
+            m_name = item['Method']
+            # 개발 일정
+            sheet.write(row, 0, item[cat_col])
+            sheet.write(row, 1, f"{m_name} Method Dev & Optimization")
+            for w in range(0, 8): sheet.write(row, 3 + w, "", fmt_dev)
+            row += 1
             
-            row_idx += 1 # 항목간 간격
+            # 검증 일정 (생산 전 완료 목표)
+            sheet.write(row, 1, f"{m_name} Qualification/Validation")
+            for w in range(8, 12): sheet.write(row, 3 + w, "", fmt_val)
+            row += 1
+            
+            # 안정성 시험 (생산 직후 착수)
+            if str(item['Stability-indicating']).lower() in ['yes', 'partial']:
+                sheet.write(row, 1, f"{m_name} Stability Study (Long-term/Accel)")
+                for w in range(prod_week, prod_week + 24): # 최소 6개월 표시
+                    if 3 + w < 55: sheet.write(row, 3 + w, "", fmt_stab)
+                row += 1
+            row += 1
 
         workbook.close()
         return output.getvalue()
 
-    if st.button("📊 마일스톤 간트 차트 (Excel) 추출"):
-        excel_bin = generate_strategic_gantt(df, base_date, dev_stage, substance_type)
-        st.download_button(
-            label="💾 전략 로드맵 다운로드",
-            data=excel_bin,
-            file_name=f"CMC_Roadmap_{substance_type}_{dev_stage}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    if st.button("📊 전략 마스터 로드맵(Excel) 생성"):
+        excel_file = generate_master_gantt(df, base_date, prod_date, dev_stage)
+        st.download_button("💾 엑셀 다운로드", excel_file, f"CMC_Master_Roadmap_{dev_stage}.xlsx")
